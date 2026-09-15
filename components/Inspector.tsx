@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { startTransition, useEffect, useOptimistic, useRef, useState } from "react";
 import {
   Action,
   BACK_TARGET,
@@ -393,7 +393,7 @@ export function FrameInspector({
 }) {
   const lang = useLang();
   const [copied, setCopied] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useOptimistic(false);
   const [swipeDir, setSwipeDir] = useState<SwipeDir>("left");
   useEffect(() => {
     if (!copied) return;
@@ -501,13 +501,11 @@ export function FrameInspector({
           {actionBtn(
             "image",
             saving ? t("saving", lang) : t("saveImage", lang),
-            async () => {
-              setSaving(true);
-              try {
+            () => {
+              startTransition(async () => {
+                setSaving(true);
                 await onSaveImage();
-              } finally {
-                setSaving(false);
-              }
+              });
             },
             saving,
           )}

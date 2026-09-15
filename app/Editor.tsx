@@ -1,12 +1,16 @@
 "use client";
 
 import {
+  startTransition,
+  useActionState,
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
+  useOptimistic,
   useRef,
   useState,
+  useTransition,
 } from "react";
 import { AnimatePresence, motion, useReducedMotion, useSpring } from "motion/react";
 import { toPng } from "html-to-image";
@@ -191,6 +195,40 @@ type DocMeta = Omit<Doc, "groups" | "frames">;
 /** an undo step: the screens and parts, plus the rest of the document for steps that replaced it all */
 type Snapshot = { groups: Group[]; frames: Frame[]; meta?: DocMeta };
 
+type StateUpdate<T> = T | ((current: T) => T);
+
+/**
+ * The persisted document is one logical value. Keeping each field in a separate
+ * state cell made it possible for a document replacement to temporarily mix
+ * fields from two documents and forced `doc` to be reconstructed at the bottom
+ * of the component. The editor keeps nulls internally so reset operations are
+ * explicit; serialization converts them back to optional Doc fields.
+ */
+type EditorDocState = {
+  groups: Group[];
+  frames: Frame[];
+  paletteKey: string;
+  customPalette: Palette | null;
+  dynamicColor: boolean;
+  theme: Theme;
+  frame: FrameMode;
+  title: string;
+  brief: string;
+  promptEdit: string | undefined;
+  platform: Platform | null;
+};
+
+/** Only one of these can be active at a time in the editor UI. */
+type SelectionState =
+  | { kind: "none" }
+  | { kind: "items"; ids: string[] }
+  | { kind: "frame"; id: string }
+  | { kind: "link"; id: string };
+
+function resolveStateUpdate<T>(next: StateUpdate<T>, current: T): T {
+  return typeof next === "function" ? (next as (current: T) => T)(current) : next;
+}
+
 /** a screen changing size eases the way a settling part does */
 const SIZE_TRANSITION = `width ${SETTLE_MS}ms cubic-bezier(0.2, 0, 0, 1), height ${SETTLE_MS}ms cubic-bezier(0.2, 0, 0, 1), border-radius ${SETTLE_MS}ms cubic-bezier(0.2, 0, 0, 1)`;
 
@@ -340,18 +378,52 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   /* ---------- document ---------- */
   const [lang, setLang] = useState<Lang>(initialLang);
   const [editAccess, setEditAccess] = useState<"checking" | "editable" | "readonly">("checking");
-  const [groups, setGroupState] = useState<Group[]>(() => seed(initialLang));
-  /* Enforce the standalone-modal rule for imports, grouping, undo and all edits. */
-  const setGroups = useCallback((next: Group[] | ((prev: Group[]) => Group[])) => {
-    setGroupState((prev) => constrainModalRails(typeof next === "function" ? next(prev) : next));
+  const [docState, setDocState] = useState<EditorDocState>(() => ({
+    groups: seed(initialLang),
+    frames: [{ ...SEED_FRAMES[0], name: t("home", initialLang) }],
+    paletteKey: "purple",
+    customPalette: null,
+    dynamicColor: false,
+    theme: DEFAULT_THEME,
+    frame: "phone",
+    title: "",
+    brief: "",
+    promptEdit: undefined,
+    platform: null,
+  }));
+  const {
+    groups,
+    frames,
+    paletteKey,
+    customPalette,
+    dynamicColor,
+    theme,
+    frame,
+    title,
+    brief,
+    promptEdit,
+    platform,
+  } = docState;
+  const patchDoc = useCallback((patch: Partial<EditorDocState>) => {
+    setDocState((prev) => ({ ...prev, ...patch }));
   }, []);
-  const [frames, setFrames] = useState<Frame[]>(() => [{ ...SEED_FRAMES[0], name: t("home", initialLang) }]);
-  const [paletteKey, setPaletteKey] = useState("purple");
-  const [customPalette, setCustomPalette] = useState<Palette | null>(null);
-  const [dynamicColor, setDynamicColor] = useState(false);
-  const [theme, setTheme] = useState<Theme>(DEFAULT_THEME);
-  const patchTheme = (patch: Partial<Theme>) => setTheme((t) => ({ ...t, ...patch }));
-  const [frame, setFrame] = useState<FrameMode>("phone");
+  /* Enforce the standalone-modal rule for imports, grouping, undo and all edits. */
+  const setGroups = useCallback((next: StateUpdate<Group[]>) => {
+    setDocState((prev) => ({
+      ...prev,
+      groups: constrainModalRails(resolveStateUpdate(next, prev.groups)),
+    }));
+  }, []);
+  const setFrames = useCallback((next: StateUpdate<Frame[]>) => {
+    setDocState((prev) => ({ ...prev, frames: resolveStateUpdate(next, prev.frames) }));
+  }, []);
+  const setPaletteKey = (value: string) => patchDoc({ paletteKey: value });
+  const setCustomPalette = (value: Palette | null) => patchDoc({ customPalette: value });
+  const setDynamicColor = (value: boolean) => patchDoc({ dynamicColor: value });
+  const setTheme = (value: Theme) => patchDoc({ theme: value });
+  const patchTheme = (patch: Partial<Theme>) =>
+    setDocState((prev) => ({ ...prev, theme: { ...prev.theme, ...patch } }));
+  const setFrame = (value: FrameMode) => patchDoc({ frame: value });
   const changeLanguage = (next: Lang) => {
     setGlobalLang(next);
     initialLangRef.current = next;
@@ -367,31 +439,31 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
     }
     setGroups(translated.groups);
     setFrames(translated.frames);
-    pastRef.current = pastRef.current.map((snap) => translateSnapshot(snap, next));
-    futureRef.current = futureRef.current.map((snap) => translateSnapshot(snap, next));
+    historyRef.current.past = historyRef.current.past.map((snap) => translateSnapshot(snap, next));
+    historyRef.current.future = historyRef.current.future.map((snap) => translateSnapshot(snap, next));
   };
   const [isMobile, setIsMobile] = useState(false);
   const [sheet, setSheet] = useState<"edit" | "settings" | "lang" | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
-  /** frame being rendered offscreen for the PNG export */
-  const [exportFrame, setExportFrame] = useState<Frame | null>(null);
+  /**
+   * The export render must appear during the save action even though its normal
+   * state update would be deferred by the transition. It rolls back to null
+   * automatically when the action succeeds or fails.
+   */
+  const [exportFrame, setOptimisticExportFrame] = useOptimistic<Frame | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [title, setTitle] = useState("");
-  const [brief, setBrief] = useState("");
-  const [promptEdit, setPromptEdit] = useState<string | undefined>(undefined);
+  const setTitle = (value: string) => patchDoc({ title: value });
+  const setBrief = (value: string) => patchDoc({ brief: value });
+  const setPromptEdit = (value: string | undefined) => patchDoc({ promptEdit: value });
   /** the author's explicit target; null follows the screens (web once a desktop screen exists) */
-  const [platform, setPlatform] = useState<Platform | null>(null);
+  const setPlatform = (value: Platform | null) => patchDoc({ platform: value });
   /** a project file waiting for the author to confirm replacing the canvas */
   const [pendingImport, setPendingImport] = useState<Doc | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   /** the idea typed into the "ask an AI" dialog; kept here so a failed draft does not lose it */
   const [ideaText, setIdeaText] = useState("");
-  /** a model is drafting a design right now */
-  const [draftBusy, setDraftBusy] = useState(false);
   /** the design a draft replaced, kept until the author keeps or undoes the draft */
-  const [draftBefore, setDraftBefore] = useState<Doc | null>(null);
-  const draftBeforeRef = useRef<Doc | null>(null);
-  draftBeforeRef.current = draftBefore;
+  const [draftBefore, setDraftBeforeState] = useState<Doc | null>(null);
   /** true for the moment after a design arrives, so its colours ease over */
   const [revealing, setRevealing] = useState(false);
   const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -421,11 +493,26 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   const [rightW, setRightW] = useState(320);
   const [rightTab, setRightTab] = useState<"edit" | "prompt">("edit");
   const [favorites, setFavorites] = useState<Kind[]>([]);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [selectedFrameId, setSelectedFrameId] = useState<string | null>(null);
-  const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
+  const [selection, setSelection] = useState<SelectionState>({ kind: "none" });
+  /* Selection modes are exclusive. These values are projections for existing
+     consumers; the source of truth is the single discriminated state above. */
+  const selectedIds = selection.kind === "items" ? selection.ids : [];
+  const selectedFrameId = selection.kind === "frame" ? selection.id : null;
+  const selectedLinkId = selection.kind === "link" ? selection.id : null;
+  const setSelectedIds = (next: StateUpdate<string[]>) => {
+    setSelection((prev) => {
+      const current = prev.kind === "items" ? prev.ids : [];
+      const ids = resolveStateUpdate(next, current);
+      return ids.length ? { kind: "items", ids } : prev.kind === "items" ? { kind: "none" } : prev;
+    });
+  };
+  const setSelectedFrameId = (id: string | null) => {
+    setSelection((prev) => id ? { kind: "frame", id } : prev.kind === "frame" ? { kind: "none" } : prev);
+  };
+  const setSelectedLinkId = (id: string | null) => {
+    setSelection((prev) => id ? { kind: "link", id } : prev.kind === "link" ? { kind: "none" } : prev);
+  };
   const [previewId, setPreviewId] = useState<string | null>(null);
-  const [pressedId, setPressedId] = useState<string | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const [widths, setWidths] = useState<Record<string, number>>({});
@@ -435,14 +522,16 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   /** the groups before and after the last tidy; "undo" is offered only while the after-state is still current */
   const tidyRef = useRef<{ frameId: string; before: Group[]; after: Group[] } | null>(null);
   const [aiSettings, setAiSettings] = useState<AiSettings>(DEFAULT_AI);
-  const [aiBusy, setAiBusy] = useState(false);
+  const [aiPending, startAiTransition] = useTransition();
   /** the screen the model is working on, which wears the animated ring meanwhile */
   const [aiFrameId, setAiFrameId] = useState<string | null>(null);
+  const aiBusy = aiPending && aiFrameId !== null;
   /** the "applied" confirmation beside the tidy button */
   const [aiNote, setAiNote] = useState<{ text: string; icon: string } | null>(null);
   const projectFileRef = useRef<HTMLInputElement>(null);
   const aiNoteTimer = useRef<number | null>(null);
   const aiAbortRef = useRef<AbortController | null>(null);
+  const draftRef = useRef<{ before: Doc | null; abort: AbortController | null }>({ before: draftBefore, abort: null });
 
   const p = paletteOf(paletteKey, customPalette, theme);
   /* corner helpers read the shape scale outside React; keep it current before anything renders */
@@ -453,6 +542,11 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   const dragRef = useRef<DragState | null>(null);
   const gestureRef = useRef<Gesture | null>(null);
   const pendingRef = useRef<{ timer: number; commit: () => void } | null>(null);
+  draftRef.current.before = draftBefore;
+  const setDraftBefore = (before: Doc | null) => {
+    draftRef.current.before = before;
+    setDraftBeforeState(before);
+  };
   const groupsRef = useRef(groups);
   groupsRef.current = groups;
   const framesRef = useRef(frames);
@@ -493,15 +587,17 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   const hadDocRef = useRef(false);
 
   /* ---------- history ---------- */
-  const pastRef = useRef<Snapshot[]>([]);
-  const futureRef = useRef<Snapshot[]>([]);
-  const lastPatchRef = useRef<{ key: string; at: number }>({ key: "", at: 0 });
+  const historyRef = useRef<{
+    past: Snapshot[];
+    future: Snapshot[];
+    lastPatch: { key: string; at: number };
+  }>({ past: [], future: [], lastPatch: { key: "", at: 0 } });
 
   const snapshot = useCallback((withMeta = false) => {
     setQuickUndo(false);
-    pastRef.current.push(current(withMeta));
-    if (pastRef.current.length > HISTORY_MAX) pastRef.current.shift();
-    futureRef.current = [];
+    historyRef.current.past.push(current(withMeta));
+    if (historyRef.current.past.length > HISTORY_MAX) historyRef.current.past.shift();
+    historyRef.current.future = [];
     bumpHistory((v) => v + 1);
   }, []);
 
@@ -509,9 +605,9 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   const snapshotFor = useCallback(
     (key: string) => {
       const now = Date.now();
-      const last = lastPatchRef.current;
+      const last = historyRef.current.lastPatch;
       if (last.key !== key || now - last.at > 800) snapshot();
-      lastPatchRef.current = { key, at: now };
+      historyRef.current.lastPatch = { key, at: now };
     },
     [snapshot],
   );
@@ -540,17 +636,17 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
 
   const undo = useCallback(() => {
     setQuickUndo(false);
-    const prev = pastRef.current.pop();
+    const prev = historyRef.current.past.pop();
     if (!prev) return;
-    futureRef.current.push(current(!!prev.meta));
+    historyRef.current.future.push(current(!!prev.meta));
     restore(prev);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const redo = useCallback(() => {
-    const next = futureRef.current.pop();
+    const next = historyRef.current.future.pop();
     if (!next) return;
-    pastRef.current.push(current(!!next.meta));
+    historyRef.current.past.push(current(!!next.meta));
     restore(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -938,7 +1034,6 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
       };
       dragRef.current = null;
       setDrag(null);
-      setPressedId(null);
       gestureRef.current = null;
       setGesture(null);
     }
@@ -1173,7 +1268,6 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
     setRightTab("edit");
     /* a locked group's part stays selectable, but dragging it does nothing */
     if (g.locked) return;
-    setPressedId(item.id);
     const d: DragState = {
       item,
       offX: pt.x - left,
@@ -1227,6 +1321,8 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   };
 
   const isDragging = drag !== null;
+  /* The pressed style exists only before a canvas part crosses the drag threshold. */
+  const pressedId = drag && !drag.active && !drag.fromPalette ? drag.item.id : null;
 
   useEffect(() => {
     if (!isDragging) return;
@@ -1279,7 +1375,6 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
           }
           return out;
         });
-        setPressedId(null);
         setDrag({ ...d });
         return;
       }
@@ -1300,7 +1395,6 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
     const up = (e: PointerEvent) => {
       const d = dragRef.current;
       dragRef.current = null;
-      setPressedId(null);
       if (!d) return;
       if (!d.active) {
         setDrag(null);
@@ -2142,7 +2236,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
     setSelectedFrameId(null);
     setSelectedLinkId(null);
     setWidths({});
-    lastPatchRef.current = { key: "", at: 0 };
+    historyRef.current.lastPatch = { key: "", at: 0 };
     queueMicrotask(() => fitRef.current());
   };
 
@@ -2185,7 +2279,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
       importDoc(next);
       return;
     }
-    const before = draftBeforeRef.current ?? docRef.current;
+    const before = draftRef.current.before ?? docRef.current;
     setRevealing(true);
     if (revealTimer.current) clearTimeout(revealTimer.current);
     revealTimer.current = setTimeout(() => setRevealing(false), 900);
@@ -2196,24 +2290,34 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
     } catch {}
   };
 
-  const startDraft = async (idea: string) => {
-    setShareOpen(false);
-    setDraftBusy(true);
-    try {
-      if (guideRef.current === null) {
-        const res = await fetch(`${BASE_PATH}/agent.md`);
-        if (!res.ok) throw new Error("guide");
-        guideRef.current = await res.text();
+  const [, draftAction, draftBusy] = useActionState<null, FormData>(
+    async (_previous, formData) => {
+      const value = formData.get("idea");
+      const idea = typeof value === "string" ? value : "";
+      if (!idea.trim()) return null;
+
+      draftRef.current.abort?.abort();
+      const ac = new AbortController();
+      draftRef.current.abort = ac;
+      try {
+        if (guideRef.current === null) {
+          const res = await fetch(`${BASE_PATH}/agent.md`, { signal: ac.signal });
+          if (!res.ok) throw new Error("guide");
+          guideRef.current = await res.text();
+        }
+        const next = await draftDesign(aiSettings, guideRef.current, idea, lang, ac.signal);
+        if (!ac.signal.aborted) startTransition(() => arrive(next));
+      } catch (e) {
+        if (ac.signal.aborted) return null;
+        const m = e instanceof Error ? e.message : "";
+        showToast(m === "json" ? t("aiErrorJson", lang) : m === "refusal" ? t("aiErrorRefusal", lang) : m === "long" ? t("aiErrorLong", lang) : t("aiError", lang), 3200, "error");
+      } finally {
+        if (draftRef.current.abort === ac) draftRef.current.abort = null;
       }
-      const next = await draftDesign(aiSettings, guideRef.current, idea, lang);
-      arrive(next);
-    } catch (e) {
-      const m = e instanceof Error ? e.message : "";
-      showToast(m === "json" ? t("aiErrorJson", lang) : m === "refusal" ? t("aiErrorRefusal", lang) : m === "long" ? t("aiErrorLong", lang) : t("aiError", lang), 3200, "error");
-    } finally {
-      setDraftBusy(false);
-    }
-  };
+      return null;
+    },
+    null,
+  );
   /** true after a kept draft until the author undoes something, so the header's undo also sits by the opener */
   const [quickUndo, setQuickUndo] = useState(false);
   const keepDraft = () => {
@@ -2449,7 +2553,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
 
   /** Writes one field with the model: a part's behavior note, or a screen's description.
    *  The result goes straight in; the field remembers what it said so the rewrite can be undone. */
-  const runAi = async (action: AiActionKey, f: Frame, itemId?: string) => {
+  const runAi = (action: AiActionKey, f: Frame, itemId?: string) => {
     if (!aiReady) {
       showToast(t("aiNoKey", lang));
       return;
@@ -2458,48 +2562,52 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
     aiAbortRef.current?.abort();
     const ac = new AbortController();
     aiAbortRef.current = ac;
-    setAiBusy(true);
     setAiFrameId(f.id);
-    try {
-      if (action === "describe") {
-        const r = await proposeDescription(aiSettings, curDoc, widthsRef.current, f, lang, ac.signal);
+    startAiTransition(async () => {
+      try {
+        if (action === "describe") {
+          const r = await proposeDescription(aiSettings, curDoc, widthsRef.current, f, lang, ac.signal);
+          if (ac.signal.aborted) return;
+          startTransition(() => {
+            snapshot();
+            setFrames((fs) => fs.map((x) => (x.id === f.id ? { ...x, note: r.note, noteHistory: pushHistory(x.noteHistory, x.note), name: r.name ?? x.name } : x)));
+            showAiNote(t("aiApplied", lang));
+          });
+          return;
+        }
+        if (!itemId) return;
+        const note = await proposeBehavior(aiSettings, curDoc, widthsRef.current, f, lang, itemId, ac.signal);
         if (ac.signal.aborted) return;
-        snapshot();
-        setFrames((fs) => fs.map((x) => (x.id === f.id ? { ...x, note: r.note, noteHistory: pushHistory(x.noteHistory, x.note), name: r.name ?? x.name } : x)));
-        showAiNote(t("aiApplied", lang));
-        return;
+        if (!note) {
+          showToast(t("aiErrorJson", lang));
+          return;
+        }
+        startTransition(() => {
+          snapshot();
+          setGroups((gs) => gs.map((g) => (g.items.some((it) => it.id === itemId) ? { ...g, items: g.items.map((it) => (it.id === itemId ? { ...it, note, noteHistory: pushHistory(it.noteHistory, it.note) } : it)) } : g)));
+          showAiNote(t("aiApplied", lang));
+        });
+      } catch (e) {
+        if (!ac.signal.aborted) showToast(aiErrorText(e, lang), 4000, "error");
+      } finally {
+        if (aiAbortRef.current === ac) {
+          aiAbortRef.current = null;
+          setAiFrameId(null);
+        }
       }
-      if (!itemId) return;
-      const note = await proposeBehavior(aiSettings, curDoc, widthsRef.current, f, lang, itemId, ac.signal);
-      if (ac.signal.aborted) return;
-      if (!note) {
-        showToast(t("aiErrorJson", lang));
-        return;
-      }
-      snapshot();
-      setGroups((gs) => gs.map((g) => (g.items.some((it) => it.id === itemId) ? { ...g, items: g.items.map((it) => (it.id === itemId ? { ...it, note, noteHistory: pushHistory(it.noteHistory, it.note) } : it)) } : g)));
-      showAiNote(t("aiApplied", lang));
-    } catch (e) {
-      if (!ac.signal.aborted) showToast(aiErrorText(e, lang), 4000, "error");
-    } finally {
-      if (aiAbortRef.current === ac) {
-        aiAbortRef.current = null;
-        setAiBusy(false);
-        setAiFrameId(null);
-      }
-    }
+    });
   };
 
   const cancelAi = () => {
     aiAbortRef.current?.abort();
     aiAbortRef.current = null;
-    setAiBusy(false);
     setAiFrameId(null);
   };
 
   useEffect(
     () => () => {
       aiAbortRef.current?.abort();
+      draftRef.current.abort?.abort();
       if (aiNoteTimer.current) window.clearTimeout(aiNoteTimer.current);
       if (toastTimer.current) window.clearTimeout(toastTimer.current);
     },
@@ -2588,21 +2696,17 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   /** The screen is re-rendered offscreen at 1:1 with static parts, so the
    *  canvas zoom, selection outlines and in-flight animations never leak into the PNG. */
   const saveFrameImage = async (f: Frame) => {
-    setExportFrame(f);
+    setOptimisticExportFrame(f);
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
-    try {
-      await document.fonts?.ready;
-      const el = document.querySelector<HTMLElement>(`[data-export="${f.id}"]`);
-      if (!el) return;
-      const { w, h } = frameSizeOf(f);
-      const url = await toPng(el, { pixelRatio: 2, cacheBust: true, width: w, height: h });
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${f.name || "screen"}.png`;
-      a.click();
-    } finally {
-      setExportFrame(null);
-    }
+    await document.fonts?.ready;
+    const el = document.querySelector<HTMLElement>(`[data-export="${f.id}"]`);
+    if (!el) return;
+    const { w, h } = frameSizeOf(f);
+    const url = await toPng(el, { pixelRatio: 2, cacheBust: true, width: w, height: h });
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${f.name || "screen"}.png`;
+    a.click();
   };
 
   /** the runs of one screen drawn with plain divs: the export layer */
@@ -3841,8 +3945,8 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
             zoom={view.z}
             onZoom={(z) => setZoomAt(z)}
             onFit={fit}
-            canUndo={pastRef.current.length > 0}
-            canRedo={futureRef.current.length > 0}
+            canUndo={historyRef.current.past.length > 0}
+            canRedo={historyRef.current.future.length > 0}
             onUndo={undo}
             onRedo={redo}
             onClear={() => {
@@ -4140,7 +4244,10 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
           onIdea={setIdeaText}
           open={shareOpen}
           onClose={() => setShareOpen(false)}
-          onDraft={(idea) => void startDraft(idea)}
+          onDraft={(formData) => {
+            setShareOpen(false);
+            draftAction(formData);
+          }}
           onSetupAi={() => {
             setShareOpen(false);
             setLeftOpen(true);
