@@ -1,15 +1,18 @@
-Warning: truncated output (original token count: 40680)
-Total output lines: 4327
+Warning: truncated output (original token count: 40766)
+Total output lines: 4339
 
 "use client";
 
 import {
+  startTransition,
+  useActionState,
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  useTransition,
 } from "react";
 import { AnimatePresence, motion, useReducedMotion, useSpring } from "motion/react";
 import { toPng } from "html-to-image";
@@ -223,9 +226,6 @@ type SelectionState =
   | { kind: "items"; ids: string[] }
   | { kind: "frame"; id: string }
   | { kind: "link"; id: string };
-
-type DraftState = { busy: boolean; before: Doc | null };
-type AiRun = { frameId: string } | null;
 
 function resolveStateUpdate<T>(next: StateUpdate<T>, current: T): T {
   return typeof next === "function" ? (next as (current: T) => T)(current) : next;
@@ -460,12 +460,8 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   const [shareOpen, setShareOpen] = useState(false);
   /** the idea typed into the "ask an AI" dialog; kept here so a failed draft does not lose it */
   const [ideaText, setIdeaText] = useState("");
-  /** Network status and the design under review are one workflow state. */
-  const [draftState, setDraftState] = useState<DraftState>({ busy: false, before: null });
-  const draftBusy = draftState.busy;
-  const draftBefore = draftState.before;
-  const setDraftBusy = (busy: boolean) => setDraftState((prev) => ({ ...prev, busy }));
-  const setDraftBefore = (before: Doc | null) => setDraftState((prev) => ({ ...prev, before }));
+  /** the design a draft replaced, kept until the author keeps or undoes the draft */
+  const [draftBefore, setDraftBeforeState] = useState<Doc | null>(null);
   /** true for the moment after a design arrives, so its colours ease over */
   const [revealing, setRevealing] = useState(false);
   const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -524,16 +520,16 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   /** the groups before and after the last tidy; "undo" is offered only while the after-state is still current */
   const tidyRef = useRef<{ frameId: string; before: Group[]; after: Group[] } | null>(null);
   const [aiSettings, setAiSettings] = useState<AiSettings>(DEFAULT_AI);
-  const [aiRun, setAiRun] = useState<AiRun>(null);
-  const aiBusy = aiRun !== null;
+  const [aiPending, startAiTransition] = useTransition();
   /** the screen the model is working on, which wears the animated ring meanwhile */
-  const aiFrameId = aiRun?.frameId ?? null;
+  const [aiFrameId, setAiFrameId] = useState<string | null>(null);
+  const aiBusy = aiPending && aiFrameId !== null;
   /** the "applied" confirmation beside the tidy button */
   const [aiNote, setAiNote] = useState<{ text: string; icon: string } | null>(null);
   const projectFileRef = useRef<HTMLInputElement>(null);
   const aiNoteTimer = useRef<number | null>(null);
   const aiAbortRef = useRef<AbortController | null>(null);
-  const draftRef = useRef<{ state: DraftState; abort: AbortController | null }>({ state: draftState, abort: null });
+  const draftRef = useRef<{ before: Doc | null; abort: AbortController | null }>({ before: draftBefore, abort: null });
 
   const p = paletteOf(paletteKey, customPalette, theme);
   /* corner helpers read the shape scale outside React; keep it current before anything renders */
@@ -544,7 +540,11 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   const dragRef = useRef<DragState | null>(null);
   const gestureRef = useRef<Gesture | null>(null);
   const pendingRef = useRef<{ timer: number; commit: () => void } | null>(null);
-  draftRef.current.state = draftState;
+  draftRef.current.before = draftBefore;
+  const setDraftBefore = (before: Doc | null) => {
+    draftRef.current.before = before;
+    setDraftBeforeState(before);
+  };
   const groupsRef = useRef(groups);
   groupsRef.current = groups;
   const framesRef = useRef(frames);
@@ -1057,10 +1057,10 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
         z,
       });
     };
-    const up = (e: PointerE…20680 tokens truncated…  if (c.ph) {
-            return (
-              <motion.div
-                key="__gap"
+    const up = (e: PointerEvent) => {
+      if (e.pointerType !== "touch") return;
+      touchesRef.current.delete(e.pointerId);
+      if (touchesRef.current.size <…20766 tokens truncated…             key="__gap"
                 initial={g.axis === "x" ? { width: 0 } : { height: 0 }}
                 animate={
                   g.axis === "x" ? { width: phMain } : { height: phMain }
@@ -2037,7 +2037,10 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
           onIdea={setIdeaText}
           open={shareOpen}
           onClose={() => setShareOpen(false)}
-          onDraft={(idea) => void startDraft(idea)}
+          onDraft={(formData) => {
+            setShareOpen(false);
+            draftAction(formData);
+          }}
           onSetupAi={() => {
             setShareOpen(false);
             setLeftOpen(true);

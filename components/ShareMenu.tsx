@@ -71,7 +71,7 @@ export function ShareDialog({
   open: boolean;
   onClose: () => void;
   /** the idea, for the author's own model to draft */
-  onDraft: (idea: string) => void;
+  onDraft: (formData: FormData) => void;
   /** opens the AI settings so a key can be entered */
   onSetupAi: () => void;
 }) {
@@ -114,12 +114,13 @@ export function ShareDialog({
   };
 
   /* a connected pair, the way the canvas draws connected buttons: outer corners round, inner ones tight */
-  const pill = (icon: string, label: string, onClick: () => void, opts?: { primary?: boolean; disabled?: boolean; corners?: "left" | "right"; title?: string }) => {
+  const pill = (icon: string, label: string, onClick: (() => void) | undefined, opts?: { primary?: boolean; disabled?: boolean; corners?: "left" | "right"; title?: string; type?: "button" | "submit" }) => {
     const outer = 20;
     const inner = 8;
     const radius = opts?.corners === "left" ? `${outer}px ${inner}px ${inner}px ${outer}px` : opts?.corners === "right" ? `${inner}px ${outer}px ${outer}px ${inner}px` : outer;
     return (
       <button
+        type={opts?.type ?? "button"}
         onClick={onClick}
         disabled={opts?.disabled}
         title={opts?.title}
@@ -189,29 +190,31 @@ export function ShareDialog({
               {pill(copied === "link" ? "check" : "link", copied === "link" ? t("copied", lang) : t("shareLinkCopy", lang), copyLink, { title: t("shareLinkHint", lang) })}
             </div>
             <p style={{ margin: 0, fontSize: 13, lineHeight: 1.55, color: p.onSurfaceVariant }}>{t("askAiHint", lang)}</p>
-            <textarea
-              value={idea}
-              onChange={(e) => onIdea(e.target.value)}
-              placeholder={t("askAiIdea", lang)}
-              rows={4}
-              autoFocus
-              spellCheck={false}
-              style={{
-                width: "100%",
-                padding: "10px 14px",
-                borderRadius: 14,
-                border: "none",
-                background: p.surface,
-                color: p.onSurface,
-                font: "inherit",
-                fontSize: 14,
-                lineHeight: 1.45,
-                outline: "none",
-                boxSizing: "border-box",
-                resize: "none",
-              }}
-            />
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <form action={onDraft} style={{ display: "contents" }}>
+              <textarea
+                name="idea"
+                value={idea}
+                onChange={(e) => onIdea(e.target.value)}
+                placeholder={t("askAiIdea", lang)}
+                rows={4}
+                autoFocus
+                spellCheck={false}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  borderRadius: 14,
+                  border: "none",
+                  background: p.surface,
+                  color: p.onSurface,
+                  font: "inherit",
+                  fontSize: 14,
+                  lineHeight: 1.45,
+                  outline: "none",
+                  boxSizing: "border-box",
+                  resize: "none",
+                }}
+              />
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               {/* the left of the row: where to paste after a copy, or how to unlock drafting */}
               <span style={{ flex: 1, minWidth: 0, display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: copied === "ask" ? 600 : 400, color: copied === "ask" ? p.primary : p.onSurfaceVariant }}>
                 {copied === "ask" ? (
@@ -226,12 +229,14 @@ export function ShareDialog({
               <div style={{ display: "inline-flex", gap: 3, flex: "0 0 auto" }}>
                 {pill(copied === "ask" ? "check" : "content_copy", copied === "ask" ? t("copied", lang) : t("askAiCopy", lang), copyAsk, { corners: "left", title: t("askAiCopyTitle", lang) })}
                 {aiReady
-                  ? pill("auto_awesome", t("askAiGenerate", lang), () => onDraft(idea), { primary: true, disabled: !idea.trim(), corners: "right", title: t("askAiGenerateTitle", lang) })
+                  ? pill("auto_awesome", t("askAiGenerate", lang), undefined, { primary: true, disabled: !idea.trim(), corners: "right", title: t("askAiGenerateTitle", lang), type: "submit" })
                   : pill("key", t("aiSetup", lang), onSetupAi, { primary: true, corners: "right", title: t("aiSetupTitle", lang) })}
               </div>
-            </div>
+              </div>
+            </form>
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <button
+                type="button"
                 onClick={onClose}
                 title={t("closeBtn", lang)}
                 className="m3-press"
