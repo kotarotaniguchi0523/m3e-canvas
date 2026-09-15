@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 40680)
+Total output lines: 4327
+
 "use client";
 
 import {
@@ -191,6 +194,43 @@ type DocMeta = Omit<Doc, "groups" | "frames">;
 /** an undo step: the screens and parts, plus the rest of the document for steps that replaced it all */
 type Snapshot = { groups: Group[]; frames: Frame[]; meta?: DocMeta };
 
+type StateUpdate<T> = T | ((current: T) => T);
+
+/**
+ * The persisted document is one logical value. Keeping each field in a separate
+ * state cell made it possible for a document replacement to temporarily mix
+ * fields from two documents and forced `doc` to be reconstructed at the bottom
+ * of the component. The editor keeps nulls internally so reset operations are
+ * explicit; serialization converts them back to optional Doc fields.
+ */
+type EditorDocState = {
+  groups: Group[];
+  frames: Frame[];
+  paletteKey: string;
+  customPalette: Palette | null;
+  dynamicColor: boolean;
+  theme: Theme;
+  frame: FrameMode;
+  title: string;
+  brief: string;
+  promptEdit: string | undefined;
+  platform: Platform | null;
+};
+
+/** Only one of these can be active at a time in the editor UI. */
+type SelectionState =
+  | { kind: "none" }
+  | { kind: "items"; ids: string[] }
+  | { kind: "frame"; id: string }
+  | { kind: "link"; id: string };
+
+type DraftState = { busy: boolean; before: Doc | null };
+type AiRun = { frameId: string } | null;
+
+function resolveStateUpdate<T>(next: StateUpdate<T>, current: T): T {
+  return typeof next === "function" ? (next as (current: T) => T)(current) : next;
+}
+
 /** a screen changing size eases the way a settling part does */
 const SIZE_TRANSITION = `width ${SETTLE_MS}ms cubic-bezier(0.2, 0, 0, 1), height ${SETTLE_MS}ms cubic-bezier(0.2, 0, 0, 1), border-radius ${SETTLE_MS}ms cubic-bezier(0.2, 0, 0, 1)`;
 
@@ -340,18 +380,52 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   /* ---------- document ---------- */
   const [lang, setLang] = useState<Lang>(initialLang);
   const [editAccess, setEditAccess] = useState<"checking" | "editable" | "readonly">("checking");
-  const [groups, setGroupState] = useState<Group[]>(() => seed(initialLang));
-  /* Enforce the standalone-modal rule for imports, grouping, undo and all edits. */
-  const setGroups = useCallback((next: Group[] | ((prev: Group[]) => Group[])) => {
-    setGroupState((prev) => constrainModalRails(typeof next === "function" ? next(prev) : next));
+  const [docState, setDocState] = useState<EditorDocState>(() => ({
+    groups: seed(initialLang),
+    frames: [{ ...SEED_FRAMES[0], name: t("home", initialLang) }],
+    paletteKey: "purple",
+    customPalette: null,
+    dynamicColor: false,
+    theme: DEFAULT_THEME,
+    frame: "phone",
+    title: "",
+    brief: "",
+    promptEdit: undefined,
+    platform: null,
+  }));
+  const {
+    groups,
+    frames,
+    paletteKey,
+    customPalette,
+    dynamicColor,
+    theme,
+    frame,
+    title,
+    brief,
+    promptEdit,
+    platform,
+  } = docState;
+  const patchDoc = useCallback((patch: Partial<EditorDocState>) => {
+    setDocState((prev) => ({ ...prev, ...patch }));
   }, []);
-  const [frames, setFrames] = useState<Frame[]>(() => [{ ...SEED_FRAMES[0], name: t("home", initialLang) }]);
-  const [paletteKey, setPaletteKey] = useState("purple");
-  const [customPalette, setCustomPalette] = useState<Palette | null>(null);
-  const [dynamicColor, setDynamicColor] = useState(false);
-  const [theme, setTheme] = useState<Theme>(DEFAULT_THEME);
-  const patchTheme = (patch: Partial<Theme>) => setTheme((t) => ({ ...t, ...patch }));
-  const [frame, setFrame] = useState<FrameMode>("phone");
+  /* Enforce the standalone-modal rule for imports, grouping, undo and all edits. */
+  const setGroups = useCallback((next: StateUpdate<Group[]>) => {
+    setDocState((prev) => ({
+      ...prev,
+      groups: constrainModalRails(resolveStateUpdate(next, prev.groups)),
+    }));
+  }, []);
+  const setFrames = useCallback((next: StateUpdate<Frame[]>) => {
+    setDocState((prev) => ({ ...prev, frames: resolveStateUpdate(next, prev.frames) }));
+  }, []);
+  const setPaletteKey = (value: string) => patchDoc({ paletteKey: value });
+  const setCustomPalette = (value: Palette | null) => patchDoc({ customPalette: value });
+  const setDynamicColor = (value: boolean) => patchDoc({ dynamicColor: value });
+  const setTheme = (value: Theme) => patchDoc({ theme: value });
+  const patchTheme = (patch: Partial<Theme>) =>
+    setDocState((prev) => ({ ...prev, theme: { ...prev.theme, ...patch } }));
+  const setFrame = (value: FrameMode) => patchDoc({ frame: value });
   const changeLanguage = (next: Lang) => {
     setGlobalLang(next);
     initialLangRef.current = next;
@@ -367,8 +441,8 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
     }
     setGroups(translated.groups);
     setFrames(translated.frames);
-    pastRef.current = pastRef.current.map((snap) => translateSnapshot(snap, next));
-    futureRef.current = futureRef.current.map((snap) => translateSnapshot(snap, next));
+    historyRef.current.past = historyRef.current.past.map((snap) => translateSnapshot(snap, next));
+    historyRef.current.future = historyRef.current.future.map((snap) => translateSnapshot(snap, next));
   };
   const [isMobile, setIsMobile] = useState(false);
   const [sheet, setSheet] = useState<"edit" | "settings" | "lang" | null>(null);
@@ -376,22 +450,22 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   /** frame being rendered offscreen for the PNG export */
   const [exportFrame, setExportFrame] = useState<Frame | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [title, setTitle] = useState("");
-  const [brief, setBrief] = useState("");
-  const [promptEdit, setPromptEdit] = useState<string | undefined>(undefined);
+  const setTitle = (value: string) => patchDoc({ title: value });
+  const setBrief = (value: string) => patchDoc({ brief: value });
+  const setPromptEdit = (value: string | undefined) => patchDoc({ promptEdit: value });
   /** the author's explicit target; null follows the screens (web once a desktop screen exists) */
-  const [platform, setPlatform] = useState<Platform | null>(null);
+  const setPlatform = (value: Platform | null) => patchDoc({ platform: value });
   /** a project file waiting for the author to confirm replacing the canvas */
   const [pendingImport, setPendingImport] = useState<Doc | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
   /** the idea typed into the "ask an AI" dialog; kept here so a failed draft does not lose it */
   const [ideaText, setIdeaText] = useState("");
-  /** a model is drafting a design right now */
-  const [draftBusy, setDraftBusy] = useState(false);
-  /** the design a draft replaced, kept until the author keeps or undoes the draft */
-  const [draftBefore, setDraftBefore] = useState<Doc | null>(null);
-  const draftBeforeRef = useRef<Doc | null>(null);
-  draftBeforeRef.current = draftBefore;
+  /** Network status and the design under review are one workflow state. */
+  const [draftState, setDraftState] = useState<DraftState>({ busy: false, before: null });
+  const draftBusy = draftState.busy;
+  const draftBefore = draftState.before;
+  const setDraftBusy = (busy: boolean) => setDraftState((prev) => ({ ...prev, busy }));
+  const setDraftBefore = (before: Doc | null) => setDraftState((prev) => ({ ...prev, before }));
   /** true for the moment after a design arrives, so its colours ease over */
   const [revealing, setRevealing] = useState(false);
   const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -421,11 +495,26 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   const [rightW, setRightW] = useState(320);
   const [rightTab, setRightTab] = useState<"edit" | "prompt">("edit");
   const [favorites, setFavorites] = useState<Kind[]>([]);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [selectedFrameId, setSelectedFrameId] = useState<string | null>(null);
-  const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
+  const [selection, setSelection] = useState<SelectionState>({ kind: "none" });
+  /* Selection modes are exclusive. These values are projections for existing
+     consumers; the source of truth is the single discriminated state above. */
+  const selectedIds = selection.kind === "items" ? selection.ids : [];
+  const selectedFrameId = selection.kind === "frame" ? selection.id : null;
+  const selectedLinkId = selection.kind === "link" ? selection.id : null;
+  const setSelectedIds = (next: StateUpdate<string[]>) => {
+    setSelection((prev) => {
+      const current = prev.kind === "items" ? prev.ids : [];
+      const ids = resolveStateUpdate(next, current);
+      return ids.length ? { kind: "items", ids } : prev.kind === "items" ? { kind: "none" } : prev;
+    });
+  };
+  const setSelectedFrameId = (id: string | null) => {
+    setSelection((prev) => id ? { kind: "frame", id } : prev.kind === "frame" ? { kind: "none" } : prev);
+  };
+  const setSelectedLinkId = (id: string | null) => {
+    setSelection((prev) => id ? { kind: "link", id } : prev.kind === "link" ? { kind: "none" } : prev);
+  };
   const [previewId, setPreviewId] = useState<string | null>(null);
-  const [pressedId, setPressedId] = useState<string | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const [widths, setWidths] = useState<Record<string, number>>({});
@@ -435,14 +524,16 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   /** the groups before and after the last tidy; "undo" is offered only while the after-state is still current */
   const tidyRef = useRef<{ frameId: string; before: Group[]; after: Group[] } | null>(null);
   const [aiSettings, setAiSettings] = useState<AiSettings>(DEFAULT_AI);
-  const [aiBusy, setAiBusy] = useState(false);
+  const [aiRun, setAiRun] = useState<AiRun>(null);
+  const aiBusy = aiRun !== null;
   /** the screen the model is working on, which wears the animated ring meanwhile */
-  const [aiFrameId, setAiFrameId] = useState<string | null>(null);
+  const aiFrameId = aiRun?.frameId ?? null;
   /** the "applied" confirmation beside the tidy button */
   const [aiNote, setAiNote] = useState<{ text: string; icon: string } | null>(null);
   const projectFileRef = useRef<HTMLInputElement>(null);
   const aiNoteTimer = useRef<number | null>(null);
   const aiAbortRef = useRef<AbortController | null>(null);
+  const draftRef = useRef<{ state: DraftState; abort: AbortController | null }>({ state: draftState, abort: null });
 
   const p = paletteOf(paletteKey, customPalette, theme);
   /* corner helpers read the shape scale outside React; keep it current before anything renders */
@@ -453,6 +544,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   const dragRef = useRef<DragState | null>(null);
   const gestureRef = useRef<Gesture | null>(null);
   const pendingRef = useRef<{ timer: number; commit: () => void } | null>(null);
+  draftRef.current.state = draftState;
   const groupsRef = useRef(groups);
   groupsRef.current = groups;
   const framesRef = useRef(frames);
@@ -493,15 +585,17 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   const hadDocRef = useRef(false);
 
   /* ---------- history ---------- */
-  const pastRef = useRef<Snapshot[]>([]);
-  const futureRef = useRef<Snapshot[]>([]);
-  const lastPatchRef = useRef<{ key: string; at: number }>({ key: "", at: 0 });
+  const historyRef = useRef<{
+    past: Snapshot[];
+    future: Snapshot[];
+    lastPatch: { key: string; at: number };
+  }>({ past: [], future: [], lastPatch: { key: "", at: 0 } });
 
   const snapshot = useCallback((withMeta = false) => {
     setQuickUndo(false);
-    pastRef.current.push(current(withMeta));
-    if (pastRef.current.length > HISTORY_MAX) pastRef.current.shift();
-    futureRef.current = [];
+    historyRef.current.past.push(current(withMeta));
+    if (historyRef.current.past.length > HISTORY_MAX) historyRef.current.past.shift();
+    historyRef.current.future = [];
     bumpHistory((v) => v + 1);
   }, []);
 
@@ -509,9 +603,9 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   const snapshotFor = useCallback(
     (key: string) => {
       const now = Date.now();
-      const last = lastPatchRef.current;
+      const last = historyRef.current.lastPatch;
       if (last.key !== key || now - last.at > 800) snapshot();
-      lastPatchRef.current = { key, at: now };
+      historyRef.current.lastPatch = { key, at: now };
     },
     [snapshot],
   );
@@ -540,17 +634,17 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
 
   const undo = useCallback(() => {
     setQuickUndo(false);
-    const prev = pastRef.current.pop();
+    const prev = historyRef.current.past.pop();
     if (!prev) return;
-    futureRef.current.push(current(!!prev.meta));
+    historyRef.current.future.push(current(!!prev.meta));
     restore(prev);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const redo = useCallback(() => {
-    const next = futureRef.current.pop();
+    const next = historyRef.current.future.pop();
     if (!next) return;
-    pastRef.current.push(current(!!next.meta));
+    historyRef.current.past.push(current(!!next.meta));
     restore(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -938,7 +1032,6 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
       };
       dragRef.current = null;
       setDrag(null);
-      setPressedId(null);
       gestureRef.current = null;
       setGesture(null);
     }
@@ -964,2203 +1057,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
         z,
       });
     };
-    const up = (e: PointerEvent) => {
-      if (e.pointerType !== "touch") return;
-      touchesRef.current.delete(e.pointerId);
-      if (touchesRef.current.size < 2) pinchRef.current = null;
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-    };
-  }, []);
-
-  /* wheel: pan, or zoom with ctrl / pinch */
-  useEffect(() => {
-    const el = canvasRef.current;
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      if (e.ctrlKey || e.metaKey) {
-        setZoomAt(
-          viewRef.current.z * Math.exp(-e.deltaY * 0.0022),
-          e.clientX,
-          e.clientY,
-        );
-      } else {
-        setView((v) => ({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }));
-      }
-    };
-    el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [setZoomAt]);
-
-  /* ---------- rest positions and the magnet ---------- */
-  const restPos = useCallback(
-    (g: Group, k: number, sz: { w: number; h: number }) =>
-      g.axis === "x"
-        ? { left: k === 0 ? g.x - sz.w - GAP : g.x + prefixOf(g, k), top: g.y }
-        : { left: g.x, top: k === 0 ? g.y - sz.h - GAP : g.y + prefixOf(g, k) },
-    [prefixOf],
-  );
-
-  /** Nearest slot inside the magnetic field with an attraction that ramps
-   *  from 0 at the edge to 1 on target. A part only fuses with its own kind. */
-  const findSnap = useCallback(
-    (item: Item, left: number, top: number): Snap | null => {
-      const spec = connectSpecOf(item);
-      if (!spec) return null;
-      const sz = sizeRef(item);
-      let best: Snap | null = null;
-      let bestD = 1;
-      for (const g of groupsRef.current) {
-        /* a locked run is finished: nothing joins it, so it never moves to make room */
-        if (g.free || g.locked || g.axis !== spec.axis || !g.items[0] || !canJoin(g.items[0], item))
-          continue;
-        for (let k = 0; k <= g.items.length; k++) {
-          const r = restPos(g, k, sz);
-          const dx = left - r.left;
-          const dy = top - r.top;
-          const nMain = (spec.axis === "x" ? dx : dy) / SNAP_MAIN;
-          const nCross = (spec.axis === "x" ? dy : dx) / SNAP_CROSS;
-          if (Math.abs(nMain) >= 1 || Math.abs(nCross) >= 1) continue;
-          const d = Math.hypot(nMain, nCross);
-          if (d < bestD) {
-            bestD = d;
-            best = { groupId: g.id, index: k, pull: Math.pow(1 - d, PULL_EXP) };
-          }
-        }
-      }
-      return best;
-    },
-    [restPos, sizeRef],
-  );
-
-  const sx = useSpring(0, CARRY);
-  const sy = useSpring(0, CARRY);
-
-  /** Canva-style alignment: edges and centres of neighbours and of the frame
-   *  pull the part gently into line and draw a guide while they do. */
-  const guideFor = useCallback(
-    (left: number, top: number, sz: { w: number; h: number }, skip: Set<string>): Guide | null => {
-      const tol = GUIDE_PX / viewRef.current.z;
-      const xs: number[] = [];
-      const ys: number[] = [];
-      for (const g of groupsRef.current) {
-        for (const pl of layoutOf(g, widthsRef.current)) {
-          if (skip.has(pl.item.id)) continue;
-          xs.push(pl.x, pl.x + pl.w / 2, pl.x + pl.w);
-          ys.push(pl.y, pl.y + pl.h / 2, pl.y + pl.h);
-        }
-      }
-      if (frameRef.current === "phone") {
-        for (const f of framesRef.current) {
-          const { w, h } = frameSizeOf(f);
-          xs.push(
-            f.x,
-            f.x + FRAME_MARGIN,
-            f.x + w / 2,
-            f.x + w - FRAME_MARGIN,
-            f.x + w,
-          );
-          ys.push(
-            f.y,
-            f.y + FRAME_MARGIN,
-            f.y + h / 2,
-            f.y + h - FRAME_MARGIN,
-            f.y + h,
-          );
-        }
-      }
-      const mine = (pos: number, len: number) => [
-        pos,
-        pos + len / 2,
-        pos + len,
-      ];
-      let best: Guide = {};
-      let bx = tol;
-      for (const c of xs)
-        for (const m of mine(left, sz.w)) {
-          const d = Math.abs(c - m);
-          if (d < bx) {
-            bx = d;
-            best = { ...best, x: left + (c - m), gx: c };
-          }
-        }
-      let by = tol;
-      for (const c of ys)
-        for (const m of mine(top, sz.h)) {
-          const d = Math.abs(c - m);
-          if (d < by) {
-            by = d;
-            best = { ...best, y: top + (c - m), gy: c };
-          }
-        }
-      return best.x === undefined && best.y === undefined ? null : best;
-    },
-    [],
-  );
-  const findGuide = useCallback(
-    (item: Item, left: number, top: number): Guide | null => guideFor(left, top, sizeRef(item), new Set([item.id])),
-    [guideFor, sizeRef],
-  );
-
-  /* ---------- pointer: parts ---------- */
-  const flushPending = useCallback(() => {
-    const pend = pendingRef.current;
-    if (!pend) return;
-    clearTimeout(pend.timer);
-    pendingRef.current = null;
-    pend.commit();
-  }, []);
-  useEffect(() => () => flushPending(), [flushPending]);
-
-  const startPan = (clientX: number, clientY: number) => {
-    const g: Gesture = {
-      kind: "pan",
-      sx: clientX,
-      sy: clientY,
-      vx: viewRef.current.x,
-      vy: viewRef.current.y,
-    };
-    gestureRef.current = g;
-    setGesture(g);
-  };
-
-  const onItemPointerDown = (
-    e: React.PointerEvent,
-    g: Group,
-    index: number,
-    item: Item,
-  ) => {
-    if (e.button === 1 || modeRef.current === "hand" || spaceRef.current) {
-      e.preventDefault();
-      e.stopPropagation();
-      startPan(e.clientX, e.clientY);
-      return;
-    }
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    flushPending();
-    if (g.free) {
-      setSelectedIds((cur) => (e.shiftKey ? [...cur.filter((x) => !g.items.some((it) => it.id === x)), ...g.items.map((it) => it.id)] : g.items.map((it) => it.id)));
-      setSelectedFrameId(null);
-      setSelectedLinkId(null);
-      setRightTab("edit");
-      /* a locked group stays selectable, but dragging it does nothing */
-      if (g.locked) return;
-      const gg: Gesture = { kind: "group", id: g.id, sx: e.clientX, sy: e.clientY, gx: g.x, gy: g.y, moved: false, overBin: false };
-      gestureRef.current = gg;
-      setGesture(gg);
-      return;
-    }
-    const pt = toWorld(e.clientX, e.clientY);
-    const off = prefixOf(g, index);
-    const left = g.axis === "x" ? g.x + off : g.x;
-    const top = g.axis === "x" ? g.y : g.y + off;
-    sx.jump(left);
-    sy.jump(top);
-    setSelectedIds((cur) =>
-      e.shiftKey ? [...cur.filter((x) => x !== item.id), item.id] : [item.id],
-    );
-    setSelectedFrameId(null);
-    setSelectedLinkId(null);
-    setRightTab("edit");
-    /* a locked group's part stays selectable, but dragging it does nothing */
-    if (g.locked) return;
-    setPressedId(item.id);
-    const d: DragState = {
-      item,
-      offX: pt.x - left,
-      offY: pt.y - top,
-      startX: pt.x,
-      startY: pt.y,
-      px: pt.x,
-      py: pt.y,
-      active: false,
-      fromPalette: false,
-      overBin: false,
-      snap: null,
-      settling: false,
-      guide: null,
-    };
-    dragRef.current = d;
-    setDrag({ ...d });
-  };
-
-  const onPartPointerDown = (e: React.PointerEvent, kind: Kind) => {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    flushPending();
-    const item = makeItem(kind);
-    const pt = toWorld(e.clientX, e.clientY);
-    const sz = sizeOf(item, widthsRef.current);
-    const offX = Math.min(sz.w / 2, 90);
-    const offY = Math.min(sz.h / 2, 40);
-    sx.jump(pt.x - offX);
-    sy.jump(pt.y - offY);
-    setSelectedIds([item.id]);
-    setRightTab("edit");
-    const d: DragState = {
-      item,
-      offX,
-      offY,
-      startX: pt.x,
-      startY: pt.y,
-      px: pt.x,
-      py: pt.y,
-      active: true,
-      fromPalette: true,
-      overBin: false,
-      snap: null,
-      settling: false,
-      guide: null,
-    };
-    dragRef.current = d;
-    setDrag({ ...d });
-  };
-
-  const isDragging = drag !== null;
-
-  useEffect(() => {
-    if (!isDragging) return;
-    /* Ctrl overrides auto-snap for as long as it is held: no magnet slot, no
-       alignment guide, no 4dp grid. A pointer move carries its own ctrlKey, and
-       key events cover the moments in between when the pointer is still. */
-    let ctrlHeld = false;
-
-    const move = (e: PointerEvent) => {
-      const d = dragRef.current;
-      if (!d) return;
-      const pt = toWorld(e.clientX, e.clientY);
-      d.px = pt.x;
-      d.py = pt.y;
-      ctrlHeld = e.ctrlKey || e.metaKey;
-
-      if (!d.active) {
-        if (
-          Math.hypot(pt.x - d.startX, pt.y - d.startY) * viewRef.current.z <
-          5
-        ) {
-          setDrag({ ...d });
-          return;
-        }
-        d.active = true;
-        d.snap = null;
-        const id = d.item.id;
-        snapshot();
-        setGroups((prev) => {
-          const out: Group[] = [];
-          for (const g of prev) {
-            const idx = g.items.findIndex((it) => it.id === id);
-            if (idx < 0) {
-              out.push(g);
-              continue;
-            }
-            const rest = g.items.filter((it) => it.id !== id);
-            if (rest.length === 0) continue;
-            const sz = sizeOf(g.items[idx], widthsRef.current);
-            const back = idx === 0;
-            // The anchor moves to the new first item; that jump must not animate,
-            // otherwise the remaining run springs sideways for a frame.
-            if (back) instantRef.current.add(g.id);
-            out.push({
-              ...g,
-              x: back && g.axis === "x" ? g.x + sz.w + GAP : g.x,
-              y: back && g.axis === "y" ? g.y + sz.h + GAP : g.y,
-              items: rest,
-            });
-          }
-          return out;
-        });
-        setPressedId(null);
-        setDrag({ ...d });
-        return;
-      }
-
-      /* a part being added from the palette has nothing to delete yet; dropping it back there just cancels */
-      d.overBin = !d.fromPalette && inBin(e.clientX);
-      d.snap =
-        d.overBin || ctrlHeld
-          ? null
-          : findSnap(d.item, pt.x - d.offX, pt.y - d.offY);
-      d.guide =
-        d.overBin || d.snap || ctrlHeld
-          ? null
-          : findGuide(d.item, pt.x - d.offX, pt.y - d.offY);
-      setDrag({ ...d });
-    };
-
-    const up = (e: PointerEvent) => {
-      const d = dragRef.current;
-      dragRef.current = null;
-      setPressedId(null);
-      if (!d) return;
-      if (!d.active) {
-        setDrag(null);
-        return;
-      }
-
-      const loose = ctrlHeld || e.ctrlKey || e.metaKey;
-
-      const item = d.item;
-      const sz = sizeRef(item);
-
-      if (d.overBin) {
-        setSelectedIds((cur) => cur.filter((x) => x !== item.id));
-        setDrag(null);
-        return;
-      }
-
-      if (!loose && d.snap) {
-        const t = d.snap;
-        setDrag({ ...d, snap: { ...t, pull: 1 }, settling: true });
-        const commit = () => {
-          setGroups((prev) => {
-            if (prev.some((g) => g.items.some((it) => it.id === item.id)))
-              return prev;
-            return prev.map((g) => {
-              if (g.id !== t.groupId) return g;
-              const front = t.index === 0;
-              return {
-                ...g,
-                x: front && g.axis === "x" ? g.x - sz.w - GAP : g.x,
-                y: front && g.axis === "y" ? g.y - sz.h - GAP : g.y,
-                items: [
-                  ...g.items.slice(0, t.index),
-                  item,
-                  ...g.items.slice(t.index),
-                ],
-              };
-            });
-          });
-          setDrag(null);
-        };
-        const timer = window.setTimeout(() => {
-          pendingRef.current = null;
-          commit();
-        }, SETTLE_MS);
-        pendingRef.current = { timer, commit };
-        return;
-      }
-
-      const rect = canvasRect();
-      const v = viewRef.current;
-      /* a Ctrl drop lands where the cursor is, untouched by any guide hold */
-      const rawX = loose ? d.px - d.offX : d.guide?.x ?? d.px - d.offX;
-      const rawY = loose ? d.py - d.offY : d.guide?.y ?? d.py - d.offY;
-      const screenL = (rawX + sz.w) * v.z + v.x;
-      const screenT = (rawY + sz.h) * v.z + v.y;
-      const screenR = rawX * v.z + v.x;
-      const screenB = rawY * v.z + v.y;
-      const cw = rect?.width ?? 0;
-      const ch = rect?.height ?? 0;
-      if (
-        d.fromPalette &&
-        (screenL < 0 || screenT < 0 || screenR > cw || screenB > ch)
-      ) {
-        setSelectedIds((cur) => cur.filter((x) => x !== item.id));
-        setDrag(null);
-        return;
-      }
-      if (d.fromPalette) snapshot();
-      const targetFrame =
-        frameRef.current === "phone"
-          ? framesRef.current.find((f) => {
-              const r = frameRect(f);
-              const cx = rawX + sz.w / 2;
-              const cy = rawY + sz.h / 2;
-              return cx >= r.l && cx <= r.r && cy >= r.t && cy <= r.b;
-            })
-          : undefined;
-      /* a bar spans the screen it lands on, beside its rail; any other part keeps its phone-sized
-       * default (a list or a field as wide as a desktop is rarely what the author means), but no
-       * taller than the screen */
-      const slot = targetFrame ? barSlotOf(groupsRef.current, targetFrame, framesRef.current, widthsRef.current) : null;
-      const isBar = FULL_WIDTH.includes(item.kind);
-      const placedItem = targetFrame && slot ? (isBar ? carryItemSize(item, { w: PHONE_W, h: PHONE_H }, { w: slot.w, h: frameSizeOf(targetFrame).h }) : fitHeight(item, frameSizeOf(targetFrame).h)) : item;
-      /* off any guide, the part settles on the 4dp grid of the screen it lands on */
-      const origin = targetFrame ?? { x: 0, y: 0 };
-      /* Ctrl keeps the pixel the cursor chose; a guide holds its whole-pixel
-         position; otherwise the axis settles on the 4dp grid as before.
-         A bar dropped on a screen keeps its own spanning rule. */
-      const settle = (onGuide: boolean, pos: number, grid: number) =>
-        loose || onGuide ? Math.round(pos) : onGrid(pos, grid);
-      const dropped: Group = {
-        id: uid(),
-        x: isBar && slot ? Math.round(slot.x) : settle(d.guide?.gx !== undefined, rawX, origin.x),
-        y: settle(d.guide?.gy !== undefined, rawY, origin.y),
-        axis: connectSpecOf(item)?.axis ?? "x",
-        items: [placedItem],
-      };
-      /* a part that grew to the screen's width is kept inside it, then settles back on the grid */
-      const pulled = targetFrame ? pullInto(dropped, targetFrame, widthsRef.current) : dropped;
-      /* a Ctrl drop keeps whatever pullInto chose, whole pixels included;
-         otherwise a part pulled back in settles on the grid again */
-      const ng =
-        pulled === dropped || loose
-          ? pulled
-          : { ...pulled, x: d.guide?.gx !== undefined ? pulled.x : onGrid(pulled.x, origin.x), y: d.guide?.gy !== undefined ? pulled.y : onGrid(pulled.y, origin.y) };
-      setGroups((prev) =>
-        prev.some((g) => g.items.some((it) => it.id === item.id))
-          ? prev
-          : [...prev, ng],
-      );
-      setDrag(null);
-    };
-
-    /* Ctrl (or Cmd on a Mac) pressed or released while the pointer is still: the drawn
-       magnet and guide must leave (or be free to return) right away, not on the next move */
-    const onCtrl = (e: KeyboardEvent, held: boolean) => {
-      if ((e.key !== "Control" && e.key !== "Meta") || e.repeat) return;
-      const d = dragRef.current;
-      if (!d) return;
-      ctrlHeld = held;
-      if (held) {
-        d.snap = null;
-        d.guide = null;
-      }
-      setDrag({ ...d });
-    };
-    const onCtrlDown = (e: KeyboardEvent) => onCtrl(e, true);
-    const onCtrlUp = (e: KeyboardEvent) => onCtrl(e, false);
-    window.addEventListener("keydown", onCtrlDown);
-    window.addEventListener("keyup", onCtrlUp);
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-      window.removeEventListener("keydown", onCtrlDown);
-      window.removeEventListener("keyup", onCtrlUp);
-    };
-    // handlers read live state through refs, so this binds once per drag
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDragging]);
-
-  /* the overlay sits between the cursor and the slot, weighted by attraction */
-  useEffect(() => {
-    if (!drag?.active) return;
-    const cursorL = drag.px - drag.offX;
-    const cursorT = drag.py - drag.offY;
-    if (drag.snap) {
-      const g = groupsRef.current.find((x) => x.id === drag.snap!.groupId);
-      if (g) {
-        const r = restPos(g, drag.snap.index, sizeRef(drag.item));
-        sx.set(lerp(cursorL, r.left, drag.snap.pull));
-        sy.set(lerp(cursorT, r.top, drag.snap.pull));
-        return;
-      }
-    }
-    sx.set(drag.guide?.x ?? cursorL);
-    sy.set(drag.guide?.y ?? cursorT);
-  }, [drag, restPos, sizeRef, sx, sy]);
-
-  /* ---------- pointer: canvas (pan / marquee) ---------- */
-  const itemRects = useCallback(() => {
-    const out: { id: string; l: number; t: number; r: number; b: number }[] =
-      [];
-    for (const g of groupsRef.current) {
-      for (const pl of layoutOf(g, widthsRef.current)) {
-        out.push({ id: pl.item.id, l: pl.x, t: pl.y, r: pl.x + pl.w, b: pl.y + pl.h });
-      }
-    }
-    return out;
-  }, []);
-
-  const clearSelection = () => {
-    setSelectedIds([]);
-    setSelectedFrameId(null);
-    setSelectedLinkId(null);
-  };
-
-  const onCanvasPointerDown = (e: React.PointerEvent) => {
-    if (mobileRef.current && e.pointerType === "touch") {
-      e.preventDefault();
-      clearSelection();
-      startPan(e.clientX, e.clientY);
-      return;
-    }
-    if (e.button === 1 || modeRef.current === "hand" || spaceRef.current) {
-      e.preventDefault();
-      startPan(e.clientX, e.clientY);
-      return;
-    }
-    if (e.button !== 0) return;
-    const pt = toWorld(e.clientX, e.clientY);
-    const g: Gesture = {
-      kind: "marquee",
-      x0: pt.x,
-      y0: pt.y,
-      x1: pt.x,
-      y1: pt.y,
-      moved: false,
-    };
-    gestureRef.current = g;
-    setGesture(g);
-    if (!e.shiftKey) setSelectedIds([]);
-    setSelectedFrameId(null);
-    setSelectedLinkId(null);
-  };
-
-  /** grab a phone frame by its bezel or label: it carries everything on it;
-   *  on a phone the screen stays put and a tap on it just clears the selection */
-  const onFramePointerDown = (e: React.PointerEvent, f: Frame) => {
-    if (mobileRef.current) {
-      e.preventDefault();
-      e.stopPropagation();
-      clearSelection();
-      startPan(e.clientX, e.clientY);
-      return;
-    }
-    if (e.button === 1 || modeRef.current === "hand" || spaceRef.current) {
-      e.preventDefault();
-      e.stopPropagation();
-      startPan(e.clientX, e.clientY);
-      return;
-    }
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setSelectedFrameId(f.id);
-    setSelectedIds([]);
-    setSelectedLinkId(null);
-    setRightTab("edit");
-    const carried = groupsRef.current
-      .filter(
-        (g) =>
-          frameOfGroup(g, framesRef.current, widthsRef.current)?.id === f.id,
-      )
-      .map((g) => ({ id: g.id, x: g.x, y: g.y }));
-    const g: Gesture = {
-      kind: "frame",
-      id: f.id,
-      sx: e.clientX,
-      sy: e.clientY,
-      fx: f.x,
-      fy: f.y,
-      groups: carried,
-      moved: false,
-    };
-    gestureRef.current = g;
-    setGesture(g);
-  };
-
-  const isGesturing = gesture !== null;
-  useEffect(() => {
-    if (!isGesturing) return;
-    const move = (e: PointerEvent) => {
-      const g = gestureRef.current;
-      if (!g) return;
-      if (g.kind === "pan") {
-        setView((v) => ({
-          ...v,
-          x: g.vx + (e.clientX - g.sx),
-          y: g.vy + (e.clientY - g.sy),
-        }));
-        return;
-      }
-      if (g.kind === "group") {
-        const z = viewRef.current.z;
-        const dx = (e.clientX - g.sx) / z;
-        const dy = (e.clientY - g.sy) / z;
-        if (!g.moved) {
-          if (Math.hypot(dx, dy) * z < 4) return;
-          g.moved = true;
-          snapshot();
-        }
-        instantRef.current.add(g.id);
-        g.overBin = inBin(e.clientX);
-        const gr = groupsRef.current.find((x) => x.id === g.id);
-        if (!gr) return;
-        /* a moved group lines up with its neighbours like a single part does, and off
-           any guide settles on the 4dp grid of the screen it is over; Ctrl (or Cmd)
-           skips both */
-        const moved = { ...gr, x: g.gx + dx, y: g.gy + dy };
-        const loose = e.ctrlKey || e.metaKey;
-        const b = groupBounds(moved, widthsRef.current);
-        const guide = loose || g.overBin ? null : guideFor(b.l, b.t, { w: b.r - b.l, h: b.b - b.t }, new Set(gr.items.map((it) => it.id)));
-        g.guide = guide;
-        setGesture({ ...g });
-        const f = frameOfGroup(moved, framesRef.current, widthsRef.current);
-        const placed = loose
-          ? moved
-          : {
-              ...moved,
-              x: guide?.x !== undefined ? Math.round(moved.x + guide.x - b.l) : onGrid(moved.x, f?.x ?? 0),
-              y: guide?.y !== undefined ? Math.round(moved.y + guide.y - b.t) : onGrid(moved.y, f?.y ?? 0),
-            };
-        setGroups((gs) => gs.map((x) => (x.id === g.id ? placed : x)));
-        return;
-      }
-      if (g.kind === "frame") {
-        const z = viewRef.current.z;
-        const dx = (e.clientX - g.sx) / z;
-        const dy = (e.clientY - g.sy) / z;
-        if (!g.moved) {
-          if (Math.hypot(dx, dy) * z < 4) return;
-          g.moved = true;
-          snapshot();
-        }
-        const ids = new Map(g.groups.map((o) => [o.id, o]));
-        for (const o of g.groups) instantRef.current.add(o.id);
-        setFrames((fs) =>
-          fs.map((f) =>
-            f.id === g.id
-              ? { ...f, x: Math.round(g.fx + dx), y: Math.round(g.fy + dy) }
-              : f,
-          ),
-        );
-        setGroups((gs) =>
-          gs.map((gr) => {
-            const o = ids.get(gr.id);
-            return o
-              ? { ...gr, x: Math.round(o.x + dx), y: Math.round(o.y + dy) }
-              : gr;
-          }),
-        );
-        return;
-      }
-      const pt = toWorld(e.clientX, e.clientY);
-      g.x1 = pt.x;
-      g.y1 = pt.y;
-      if (
-        !g.moved &&
-        Math.hypot(pt.x - g.x0, pt.y - g.y0) * viewRef.current.z > 4
-      )
-        g.moved = true;
-      if (g.moved) {
-        const l = Math.min(g.x0, g.x1);
-        const r = Math.max(g.x0, g.x1);
-        const t = Math.min(g.y0, g.y1);
-        const b = Math.max(g.y0, g.y1);
-        const hit = itemRects()
-          .filter((it) => it.l < r && it.r > l && it.t < b && it.b > t)
-          .map((it) => it.id);
-        setSelectedIds(hit);
-      }
-      setGesture({ ...g });
-    };
-    const up = (e: PointerEvent) => {
-      const g = gestureRef.current;
-      gestureRef.current = null;
-      setGesture(null);
-      // a group dragged onto the parts panel is deleted, like a single part
-      if (g?.kind === "group" && g.moved && inBin(e.clientX)) {
-        setGroups((gs) => gs.filter((x) => x.id !== g.id));
-        setSelectedIds([]);
-      }
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isGesturing]);
-
-  /* ---------- panel resize ---------- */
-  useEffect(() => {
-    if (!resizing) return;
-    const move = (e: PointerEvent) => {
-      if (resizing === "left") setLeftW(clamp(e.clientX, RAIL_W + 244, 480));
-      else setRightW(clamp(window.innerWidth - e.clientX, 280, 480));
-    };
-    const up = () => setResizing(null);
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-  }, [resizing]);
-
-  /* ---------- editing ---------- */
-  const primaryId = selectedIds[selectedIds.length - 1] ?? null;
-  const selected = useMemo(() => {
-    for (const g of groups) {
-      const it = g.items.find((i) => i.id === primaryId);
-      if (it) return it;
-    }
-    return drag?.item.id === primaryId ? (drag?.item ?? null) : null;
-  }, [groups, primaryId, drag]);
-
-  useEffect(() => {
-    if (!selected && sheet === "edit") setSheet(null);
-  }, [selected, sheet]);
-
-  /** Resizing a lone part keeps whatever it was lined up with on the frame:
-   *  its centre on the centre line, or its far edge on the margin or screen edge.
-   *  Otherwise the near (left / top) edge stays put, as the sliders always did. */
-  const resizeShift = (g: Group, before: Item, after: Item) => {
-    const none = { dx: 0, dy: 0 };
-    if (g.items.length !== 1 || frameRef.current !== "phone") return none;
-    const f = frameOfGroup(g, framesRef.current, widthsRef.current);
-    if (!f) return none;
-    const { w: frameW, h: frameH } = frameSizeOf(f);
-    const a = sizeOf(before, widthsRef.current);
-    const b = sizeOf(after, widthsRef.current);
-    const shift = (pos: number, len: number, next: number, f0: number, fLen: number) => {
-      const d = next - len;
-      if (d === 0) return 0;
-      const near = (v: number, target: number) => Math.abs(v - target) <= 1;
-      if (near(pos + len / 2, f0 + fLen / 2)) return -Math.round(d / 2);
-      if (near(pos + len, f0 + fLen - FRAME_MARGIN) || near(pos + len, f0 + fLen)) return -d;
-      return 0;
-    };
-    return {
-      dx: shift(g.x, a.w, b.w, f.x, frameW),
-      dy: shift(g.y, a.h, b.h, f.y, frameH),
-    };
-  };
-
-  const patchSelected = (patch: Partial<Item>) => {
-    if (!primaryId) return;
-    const id = primaryId;
-    /* a rail state change resizes it too, so it counts as a resize for the lock */
-    const resizes = "size" in patch || "size2" in patch || "railExpanded" in patch || "railModal" in patch;
-    /* a resize would reflow and move the locked group; other edits leave its layout alone */
-    if (resizes && groupsRef.current.some((g) => g.locked && g.items.some((it) => it.id === id))) {
-      showToast(lockedGroupMsg());
-      return;
-    }
-    snapshotFor(id + ":" + Object.keys(patch).join(","));
-    setGroups((prev) =>
-      "railExpanded" in patch || "railModal" in patch ? updateRail(prev, framesRef.current, widthsRef.current, id, patch) : prev.map((g) => {
-        const idx = g.items.findIndex((it) => it.id === id);
-        if (idx < 0) return g;
-        const next = { ...g.items[idx], ...patch };
-        const { dx, dy } = resizes ? resizeShift(g, g.items[idx], next) : { dx: 0, dy: 0 };
-        if (dx || dy) instantRef.current.add(g.id);
-        return {
-          ...g,
-          x: g.x + dx,
-          y: g.y + dy,
-          items: g.items.map((it, i) => (i === idx ? next : it)),
-        };
-      }),
-    );
-    if (dragRef.current?.item.id === id) {
-      dragRef.current.item = { ...dragRef.current.item, ...patch };
-    }
-  };
-
-  const deleteSelected = useCallback(() => {
-    if (selectedIds.length === 0) return;
-    const ids = new Set(selectedIds);
-    /* nothing deletable when every selected part sits in a locked group: no snapshot, keep the selection */
-    if (groupsRef.current.every((g) => g.locked || !g.items.some((it) => ids.has(it.id)))) {
-      showToast(lockedGroupMsg());
-      return;
-    }
-    snapshot();
-    setGroups((prev) =>
-      prev
-        .map((g) => {
-          /* Delete / Backspace leaves a locked group and its parts alone */
-          if (g.locked) return g;
-          if (g.free) return collapseFree({ ...g, items: g.items.filter((it) => !ids.has(it.id)) }, widthsRef.current);
-          let x = g.x;
-          let y = g.y;
-          let items = g.items;
-          while (items.length && ids.has(items[0].id)) {
-            const sz = sizeOf(items[0], widthsRef.current);
-            if (g.axis === "x") x += sz.w + GAP;
-            else y += sz.h + GAP;
-            items = items.slice(1);
-          }
-          if (x !== g.x || y !== g.y) instantRef.current.add(g.id);
-          return { ...g, x, y, items: items.filter((it) => !ids.has(it.id)) };
-        })
-        .filter((g) => g.items.length > 0),
-    );
-    setSelectedIds([]);
-  }, [selectedIds, snapshot]);
-
-  const duplicateSelected = useCallback(() => {
-    if (!selected) return;
-    /* a selected hand-made group is copied whole, keeping its layout */
-    const fg = groupsRef.current.find((g) => g.free && g.items.some((it) => it.id === selected.id));
-    if (fg && fg.items.every((it) => selectedIds.includes(it.id))) {
-      const idMap = new Map(fg.items.map((it) => [it.id, uid()]));
-      const pos: Record<string, { x: number; y: number }> = {};
-      for (const it of fg.items) pos[idMap.get(it.id)!] = fg.pos?.[it.id] ?? { x: 0, y: 0 };
-      const copyG: Group = {
-        ...fg,
-        locked: undefined,
-        id: uid(),
-        x: fg.x + 24,
-        y: fg.y + 24,
-        pos,
-        items: fg.items.map((it) => ({ ...it, id: idMap.get(it.id)!, tabs: it.tabs?.map((t) => ({ ...t })) })),
-      };
-      snapshot();
-      setGroups((prev) => [...prev, copyG]);
-      setSelectedIds(copyG.items.map((it) => it.id));
-      return;
-    }
-    const rect = itemRects().find((r) => r.id === selected.id);
-    if (!rect) return;
-    const copy: Item = {
-      ...selected,
-      id: uid(),
-      tabs: selected.tabs?.map((t) => ({ ...t })),
-    };
-    /* a copied modal rail starts collapsed and standard: a screen shows one modal rail, and
-       the copy sits inward of the edge the original remembered */
-    if (copy.kind === "navRail" && copy.railModal) {
-      copy.railModal = false;
-      copy.railExpanded = false;
-      delete copy[railExpansionSide];
-    }
-    snapshot();
-    setGroups((prev) => [
-      ...prev,
-      {
-        id: uid(),
-        x: rect.l + 24,
-        y: rect.t + 24,
-        axis: connectSpecOf(copy)?.axis ?? "x",
-        items: [copy],
-      },
-    ]);
-    setSelectedIds([copy.id]);
-  }, [selected, selectedIds, itemRects, snapshot]);
-
-  /* The in-app clipboard: Ctrl+C keeps a copy of the selection (a whole group when
-   * the selection covers one) with its offset inside its screen, so Ctrl+V can put it
-   * at the same spot on another screen, or a step aside on the same one. */
-  const clipboardRef = useRef<{ group: Group; dx: number; dy: number; frameId: string | null } | null>(null);
-
-  const copySelected = useCallback(() => {
-    if (!selected) return;
-    const ids = new Set(selectedIds);
-    const g = groupsRef.current.find((x) => x.items.some((it) => it.id === selected.id));
-    if (!g) return;
-    let group: Group;
-    if (g.items.every((it) => ids.has(it.id))) {
-      /* a copy starts unlocked; the lock belongs to the original */
-      group = { ...structuredClone(g), locked: undefined };
-    } else {
-      const rect = itemRects().find((r) => r.id === selected.id);
-      if (!rect) return;
-      group = { id: g.id, x: rect.l, y: rect.t, axis: connectSpecOf(selected)?.axis ?? "x", items: [structuredClone(selected)] };
-    }
-    /* a group on no screen keeps its canvas position; one on a screen keeps its offset there */
-    const f = frameOfGroup(g, framesRef.current, widthsRef.current);
-    clipboardRef.current = { group, dx: f ? group.x - f.x : 0, dy: f ? group.y - f.y : 0, frameId: f?.id ?? null };
-  }, [selected, selectedIds, itemRects]);
-
-  const pasteClipboard = useCallback(() => {
-    const clip = clipboardRef.current;
-    if (!clip) return;
-    const fs = framesRef.current;
-    /* the screen to paste into: the selected screen, else the selection's, else the source */
-    let target = selectedFrameId ? fs.find((f) => f.id === selectedFrameId) : undefined;
-    if (!target && selected) {
-      const g = groupsRef.current.find((x) => x.items.some((it) => it.id === selected.id));
-      if (g) target = frameOfGroup(g, fs, widthsRef.current) ?? undefined;
-    }
-    if (!target) target = fs.find((f) => f.id === clip.frameId);
-    let x = target && clip.frameId ? target.x + clip.dx : clip.group.x;
-    let y = target && clip.frameId ? target.y + clip.dy : clip.group.y;
-    /* onto a spot already taken (the source, or an earlier paste) it steps aside like a duplicate */
-    while (groupsRef.current.some((g) => g.x === x && g.y === y)) {
-      x += 24;
-      y += 24;
-    }
-    const idMap = new Map(clip.group.items.map((it) => [it.id, uid()]));
-    const pos: Record<string, { x: number; y: number }> | undefined = clip.group.pos ? {} : undefined;
-    if (pos) for (const it of clip.group.items) pos[idMap.get(it.id)!] = clip.group.pos?.[it.id] ?? { x: 0, y: 0 };
-    const copy: Group = {
-      ...structuredClone(clip.group),
-      id: uid(),
-      x,
-      y,
-      pos,
-      items: clip.group.items.map((it) => ({ ...structuredClone(it), id: idMap.get(it.id)! })),
-    };
-    snapshot();
-    setGroups((prev) => [...prev, copy]);
-    setSelectedIds(copy.items.map((it) => it.id));
-    setSelectedFrameId(null);
-  }, [selected, selectedFrameId, snapshot]);
-
-  /** the free group the whole selection belongs to, if it is exactly one */
-  const selectedGroup = useMemo(() => {
-    if (selectedIds.length === 0) return null;
-    const g = groups.find((x) => x.free && x.items.some((it) => it.id === selectedIds[0]));
-    if (!g) return null;
-    const ids = new Set(g.items.map((it) => it.id));
-    return selectedIds.every((id) => ids.has(id)) && selectedIds.length === g.items.length ? g : null;
-  }, [groups, selectedIds]);
-
-  /** Pull the selected parts out of their runs into one free group that keeps
-   *  their positions. It takes the layer slot of the topmost run involved. */
-  /** Lines the selected parts up, or spaces them evenly. Whole groups move: a connected
-   *  run or a hand-made group is one unit, like in Tidy. Several parts line up with each
-   *  other's bounding box; a lone part lines up with the screen's body area, the box Tidy
-   *  fills between the bars. A unit that would land on another part steps away from the
-   *  edge it was aligned to until it is clear. */
-  const alignSelected = useCallback(
-    (kind: AlignKind) => {
-      const ids = new Set(selectedIds);
-      const all = groupsRef.current;
-      /* a locked group is left out of the alignment and stays an obstacle for the others */
-      const units = all.filter((g) => !g.locked && g.items.some((it) => ids.has(it.id)));
-      if (units.length === 0) return;
-      const unitIds = new Set(units.map((g) => g.id));
-      const distributing = kind === "distributeH" || kind === "distributeV";
-      const horizontal = kind === "left" || kind === "centerH" || kind === "right" || kind === "distributeH";
-      const rects = new Map(all.map((g) => [g.id, groupBounds(g, widthsRef.current)]));
-      let bb = units.map((g) => rects.get(g.id)!).reduce((a, r) => ({ l: Math.min(a.l, r.l), t: Math.min(a.t, r.t), r: Math.max(a.r, r.r), b: Math.max(a.b, r.b) }));
-      let screenId: string | null = null;
-      if (units.length === 1) {
-        const f = frameOfGroup(units[0], framesRef.current, widthsRef.current);
-        if (!f || distributing) return;
-        screenId = f.id;
-        bb = bodyRect(all, f, framesRef.current, widthsRef.current, new Set(units.map((g) => g.id)));
-      }
-      const shift = new Map<string, { dx: number; dy: number }>();
-      if (distributing) {
-        const sorted = [...units].sort((a, b) => (horizontal ? rects.get(a.id)!.l - rects.get(b.id)!.l : rects.get(a.id)!.t - rects.get(b.id)!.t));
-        const sizes = sorted.map((g) => (horizontal ? rects.get(g.id)!.r - rects.get(g.id)!.l : rects.get(g.id)!.b - rects.get(g.id)!.t));
-        const span = horizontal ? bb.r - bb.l : bb.b - bb.t;
-        const gap = (span - sizes.reduce((s, v) => s + v, 0)) / (sorted.length - 1);
-        let pos = horizontal ? bb.l : bb.t;
-        sorted.forEach((g, i) => {
-          const r = rects.get(g.id)!;
-          shift.set(g.id, horizontal ? { dx: Math.round(pos) - r.l, dy: 0 } : { dx: 0, dy: Math.round(pos) - r.t });
-          pos += sizes[i] + gap;
-        });
-      } else {
-        /* parts that are not moving, on the same screen, that a moved unit must not land on */
-        const others = all.filter((g) => !unitIds.has(g.id) && (!screenId || frameOfGroup(g, framesRef.current, widthsRef.current)?.id === screenId)).map((g) => rects.get(g.id)!);
-        const hits = (r: { l: number; t: number; r: number; b: number }) => others.filter((o) => o.l < r.r && o.r > r.l && o.t < r.b && o.b > r.t);
-        /* stepping away from the aligned edge: right of a left edge, up from a bottom edge; a centre tries both ways */
-        const dir = kind === "left" || kind === "top" ? 1 : kind === "right" || kind === "bottom" ? -1 : 0;
-        for (const g of units) {
-          const r = rects.get(g.id)!;
-          const w = r.r - r.l;
-          const h = r.b - r.t;
-          const ax = kind === "left" ? bb.l : kind === "centerH" ? Math.round((bb.l + bb.r) / 2 - w / 2) : kind === "right" ? bb.r - w : r.l;
-          const ay = kind === "top" ? bb.t : kind === "centerV" ? Math.round((bb.t + bb.b) / 2 - h / 2) : kind === "bottom" ? bb.b - h : r.t;
-          /* candidates stay inside the reference box; with no clear spot the plain alignment wins */
-          let x = ax;
-          let y = ay;
-          let clear = false;
-          for (let tries = 0, sign = dir || 1; tries < 12; tries++, sign = dir || -sign) {
-            const blocking = hits({ l: x, t: y, r: x + w, b: y + h });
-            if (!blocking.length) {
-              clear = true;
-              break;
-            }
-            const step = 8 + (horizontal ? Math.max(...blocking.map((o) => o.r - o.l)) : Math.max(...blocking.map((o) => o.b - o.t)));
-            if (horizontal) x = clamp(x + sign * step * (dir ? 1 : tries + 1), bb.l, Math.max(bb.l, bb.r - w));
-            else y = clamp(y + sign * step * (dir ? 1 : tries + 1), bb.t, Math.max(bb.t, bb.b - h));
-          }
-          if (!clear) {
-            x = ax;
-            y = ay;
-          }
-          shift.set(g.id, { dx: x - r.l, dy: y - r.t });
-        }
-      }
-      if (![...shift.values()].some((s) => s.dx || s.dy)) return;
-      snapshot();
-      setGroups((gs) =>
-        gs.map((g) => {
-          const s = shift.get(g.id);
-          return s && (s.dx || s.dy) ? { ...g, x: g.x + s.dx, y: g.y + s.dy } : g;
-        }),
-      );
-    },
-    [selectedIds, snapshot],
-  );
-
-  const groupSelected = useCallback(() => {
-    const ids = new Set(selectedIds);
-    if (ids.size < 2) return;
-    /* regrouping would carry a locked group's parts into an unlocked group */
-    if (groupsRef.current.some((g) => g.locked && g.items.some((it) => ids.has(it.id)))) {
-      showToast(lockedGroupMsg());
-      return;
-    }
-    const rects = new Map(itemRects().map((r) => [r.id, r]));
-    const picked: Item[] = [];
-    let top = -1;
-    groupsRef.current.forEach((g, i) => {
-      for (const it of g.items) if (ids.has(it.id)) {
-        picked.push(it);
-        top = i;
-      }
-    });
-    if (picked.length < 2) return;
-    const l = Math.min(...picked.map((it) => rects.get(it.id)!.l));
-    const t = Math.min(...picked.map((it) => rects.get(it.id)!.t));
-    const pos: Record<string, { x: number; y: number }> = {};
-    for (const it of picked) pos[it.id] = { x: rects.get(it.id)!.l - l, y: rects.get(it.id)!.t - t };
-    const ng: Group = { id: uid(), x: l, y: t, axis: "x", items: picked, free: true, pos };
-    snapshot();
-    setGroups((prev) => {
-      const out: Group[] = [];
-      prev.forEach((g, i) => {
-        if (g.free) {
-          const rest = g.items.filter((it) => !ids.has(it.id));
-          if (rest.length) out.push(collapseFree({ ...g, items: rest }, widthsRef.current));
-        } else {
-          let x = g.x;
-          let y = g.y;
-          let items = g.items;
-          while (items.length && ids.has(items[0].id)) {
-            const sz = sizeOf(items[0], widthsRef.current);
-            if (g.axis === "x") x += sz.w + GAP;
-            else y += sz.h + GAP;
-            items = items.slice(1);
-          }
-          items = items.filter((it) => !ids.has(it.id));
-          if (items.length) {
-            if (x !== g.x || y !== g.y) instantRef.current.add(g.id);
-            out.push({ ...g, x, y, items });
-          }
-        }
-        if (i === top) out.push(ng);
-      });
-      return out;
-    });
-    setSelectedIds(picked.map((it) => it.id));
-  }, [selectedIds, itemRects, snapshot]);
-
-  /** Split a free group back into single runs at their current positions, in the same layer slot. */
-  const ungroupSelected = useCallback(() => {
-    const g = selectedGroup;
-    if (!g) return;
-    /* ungrouping would replace a locked group with unlocked single runs */
-    if (g.locked) {
-      showToast(lockedGroupMsg());
-      return;
-    }
-    snapshot();
-    const singles: Group[] = explodeGroup(g, widthsRef.current).map((run) => ({ ...run, id: uid() }));
-    for (const sg of singles) instantRef.current.add(sg.id);
-    setGroups((prev) => prev.flatMap((x) => (x.id === g.id ? singles : [x])));
-  }, [selectedGroup, snapshot]);
-
-  const nudge = useCallback(
-    (dx: number, dy: number) => {
-      if (selectedIds.length === 0 && selectedFrameId) {
-        const f = framesRef.current.find((x) => x.id === selectedFrameId);
-        if (!f) return;
-        snapshotFor("nudge:frame:" + f.id);
-        const carried = new Set(
-          groupsRef.current
-            .filter(
-              (g) =>
-                frameOfGroup(g, framesRef.current, widthsRef.current)?.id ===
-                f.id,
-            )
-            .map((g) => g.id),
-        );
-        for (const id of carried) instantRef.current.add(id);
-        setFrames((fs) =>
-          fs.map((x) =>
-            x.id === f.id ? { ...x, x: x.x + dx, y: x.y + dy } : x,
-          ),
-        );
-        setGroups((gs) =>
-          gs.map((g) =>
-            carried.has(g.id) ? { ...g, x: g.x + dx, y: g.y + dy } : g,
-          ),
-        );
-        return;
-      }
-      if (selectedIds.length === 0) return;
-      const ids = new Set(selectedIds);
-      /* a locked group stays where it is, even when its parts are selected */
-      const moving = new Set(
-        groupsRef.current
-          .filter((g) => !g.locked && g.items.some((it) => ids.has(it.id)))
-          .map((g) => g.id),
-      );
-      if (moving.size === 0) return;
-      snapshotFor("nudge:" + selectedIds.join(","));
-      setGroups((prev) =>
-        prev.map((g) =>
-          moving.has(g.id) ? { ...g, x: g.x + dx, y: g.y + dy } : g,
-        ),
-      );
-    },
-    [selectedIds, selectedFrameId, snapshotFor],
-  );
-
-  const clearAll = () => {
-    setConfirmClear(false);
-    if (groupsRef.current.length === 0 && framesRef.current.length === 0)
-      return;
-    setDraftBefore(null);
-    setQuickUndo(false);
-    try {
-      localStorage.removeItem(BEFORE_KEY);
-    } catch {}
-    snapshot();
-    setGroups([]);
-    setFrames([]);
-    setSelectedIds([]);
-    setSelectedFrameId(null);
-  };
-
-  /** Opening a project file replaces the canvas with the same restore path the saved
-   *  document goes through, then starts the editor fresh on it. */
-  const importDoc = (next: Doc) => {
-    hadDocRef.current = true;
-    /* the whole document being replaced stays one undo away */
-    snapshot(true);
-    /* whatever was under review is over: a file, a clear or a new arrival replaces it */
-    setDraftBefore(null);
-    setQuickUndo(false);
-    try {
-      localStorage.removeItem(BEFORE_KEY);
-    } catch {}
-    applyDoc(next, true);
-    if (!mobileRef.current) {
-      const nextFrame = next.frame === "blank" ? "blank" : "phone";
-      setFrame(nextFrame);
-      frameRef.current = nextFrame;
-    }
-    setSelectedIds([]);
-    setSelectedFrameId(null);
-    setSelectedLinkId(null);
-    setWidths({});
-    lastPatchRef.current = { key: "", at: 0 };
-    queueMicrotask(() => fitRef.current());
-  };
-
-  /* A link with a design in its hash offers it once the editor is ready to take it,
-     whether the page opened on that link or the link was pasted into this tab. */
-  useEffect(() => {
-    if (editAccess !== "editable" || typeof window === "undefined") return;
-    let active = true;
-    const offer = () => {
-      if (!hasShareHash(window.location.hash)) return;
-      void readShareHash(window.location.hash).then((next) => {
-        if (!active) return;
-        if (next) {
-          setShareOpen(false);
-          arrive(next);
-          clearShareHash();
-        } else {
-          clearShareHash();
-          showToast(t("invalidProject", getLang()), 3000, "error");
-        }
-      });
-    };
-    offer();
-    window.addEventListener("hashchange", offer);
-    return () => {
-      active = false;
-      window.removeEventListener("hashchange", offer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editAccess]);
-
-  /** Asks the author's own model for a design and puts it on the canvas. The guide it reads
-   *  is the one a coding agent reads (public/agent.md). The replaced design waits in
-   *  `draftBefore` until the author keeps or undoes the draft. */
-  /** A design that arrived from a model or a link takes the canvas with its colours easing
-   *  over; the design it replaced waits in `draftBefore` until the author keeps or undoes it. */
-  const arrive = (next: Doc) => {
-    /* the phone editor has no keep / undo buttons: a link simply opens there, undoable as usual */
-    if (mobileRef.current) {
-      importDoc(next);
-      return;
-    }
-    const before = draftBeforeRef.current ?? docRef.current;
-    setRevealing(true);
-    if (revealTimer.current) clearTimeout(revealTimer.current);
-    revealTimer.current = setTimeout(() => setRevealing(false), 900);
-    importDoc(next);
-    setDraftBefore(before);
-    try {
-      localStorage.setItem(BEFORE_KEY, JSON.stringify(before));
-    } catch {}
-  };
-
-  const startDraft = async (idea: string) => {
-    setShareOpen(false);
-    setDraftBusy(true);
-    try {
-      if (guideRef.current === null) {
-        const res = await fetch(`${BASE_PATH}/agent.md`);
-        if (!res.ok) throw new Error("guide");
-        guideRef.current = await res.text();
-      }
-      const next = await draftDesign(aiSettings, guideRef.current, idea, lang);
-      arrive(next);
-    } catch (e) {
-      const m = e instanceof Error ? e.message : "";
-      showToast(m === "json" ? t("aiErrorJson", lang) : m === "refusal" ? t("aiErrorRefusal", lang) : m === "long" ? t("aiErrorLong", lang) : t("aiError", lang), 3200, "error");
-    } finally {
-      setDraftBusy(false);
-    }
-  };
-  /** true after a kept draft until the author undoes something, so the header's undo also sits by the opener */
-  const [quickUndo, setQuickUndo] = useState(false);
-  const keepDraft = () => {
-    setDraftBefore(null);
-    setQuickUndo(true);
-    try {
-      localStorage.removeItem(BEFORE_KEY);
-    } catch {}
-  };
-  const undoDraft = () => {
-    if (draftBefore) {
-      setRevealing(true);
-      if (revealTimer.current) clearTimeout(revealTimer.current);
-      revealTimer.current = setTimeout(() => setRevealing(false), 900);
-      importDoc(draftBefore);
-    }
-    setDraftBefore(null);
-  };
-
-  /** drops the design from the URL once it has been taken or declined */
-  const clearShareHash = () => {
-    if (typeof window !== "undefined" && window.location.hash) window.history.replaceState(null, "", window.location.pathname + window.location.search);
-  };
-
-  const selectedFrame = useMemo(
-    () => frames.find((f) => f.id === selectedFrameId) ?? null,
-    [frames, selectedFrameId],
-  );
-  const selectedPartFrame = useMemo(() => {
-    if (!primaryId || frame !== "phone") return null;
-    const g = groups.find((g) => g.items.some((it) => it.id === primaryId));
-    return g ? (frameOfGroup(g, frames, widths) ?? null) : null;
-  }, [primaryId, frame, groups, frames, widths]);
-
-  /** the screen the tidy button works on: the selected one, or the one under the selected part */
-  const tidyTarget = useMemo((): Frame | null => {
-    if (frame !== "phone" || isMobile) return null;
-    if (selectedFrame) return selectedFrame;
-    if (!primaryId) return null;
-    const g = groups.find((g) => g.items.some((it) => it.id === primaryId));
-    return g ? (frameOfGroup(g, frames, widths) ?? null) : null;
-  }, [frame, isMobile, selectedFrame, primaryId, groups, frames, widths]);
-
-  const nextFrameX = () =>
-    framesRef.current.length
-      ? Math.max(...framesRef.current.map((f) => frameRect(f).r)) + FRAME_GAP
-      : 0;
-
-  /** Entering phone mode with no frames wraps the existing parts in one. */
-  const ensureFrame = () => {
-    if (framesRef.current.length > 0) return;
-    const gs = groupsRef.current;
-    let x = 0;
-    let y = 0;
-    if (gs.length) {
-      const bbs = gs.map((g) => groupBounds(g, widthsRef.current));
-      const l = Math.min(...bbs.map((b) => b.l));
-      const t = Math.min(...bbs.map((b) => b.t));
-      const r = Math.max(...bbs.map((b) => b.r));
-      x = Math.round(Math.max(l - 24, r - PHONE_W + 24 > l ? l : l - 24));
-      y = Math.round(t - 72);
-      x = Math.min(x, l);
-      y = Math.min(y, t);
-    }
-    const f: Frame = { id: uid(), name: t("home"), x, y };
-    setFrames([f]);
-  };
-
-  const ensureFrameRef = useRef(() => {});
-  ensureFrameRef.current = ensureFrame;
-
-  /** phone UI: the plus button drops a new button where the view is looking,
-   *  kept inside the screen, and nudged down when that spot is already taken */
-  const addButton = () => {
-    const r = canvasRect();
-    const v = viewRef.current;
-    const item = makeItem("button");
-    const sz = sizeOf(item, widthsRef.current);
-    const f = framesRef.current[0];
-    let x = ((r?.width ?? 0) / 2 - v.x) / v.z - sz.w / 2;
-    let y = ((r?.height ?? 0) / 2 - v.y) / v.z - sz.h / 2;
-    if (f) {
-      const { w, h } = frameSizeOf(f);
-      const lx = f.x + Math.min(FRAME_MARGIN, (w - sz.w) / 2);
-      const ly = f.y + Math.min(FRAME_MARGIN, (h - sz.h) / 2);
-      x = clamp(x, lx, Math.max(lx, f.x + w - FRAME_MARGIN - sz.w));
-      y = clamp(y, ly, Math.max(ly, f.y + h - FRAME_MARGIN - sz.h));
-      const taken = (yy: number) =>
-        itemRects().some((o) => o.l < x + sz.w && o.r > x && o.t < yy + sz.h && o.b > yy);
-      let tries = 0;
-      while (taken(y) && y + sz.h * 2 < f.y + h && tries++ < 12) y += sz.h + 12;
-    }
-    snapshot();
-    setGroups((gs) => [
-      ...gs,
-      {
-        id: uid(),
-        x: Math.round(x),
-        y: Math.round(y),
-        axis: "x",
-        items: [item],
-      },
-    ]);
-    setSelectedIds([item.id]);
-    setSelectedFrameId(null);
-    setSheet(null);
-  };
-
-  const changeFrame = (f: FrameMode) => {
-    if (f === frame) return;
-    snapshot();
-    setFrame(f);
-    frameRef.current = f;
-    if (f === "phone") ensureFrame();
-    setSelectedFrameId(null);
-    setSelectedLinkId(null);
-    queueMicrotask(() => fitRef.current());
-  };
-
-  const addFrame = () => {
-    snapshot();
-    const base = framesRef.current[0];
-    const f: Frame = {
-      id: uid(),
-      name: `${t("screenN")} ${framesRef.current.length + 1}`,
-      x: nextFrameX(),
-      y: base?.y ?? 0,
-    };
-    setFrames((fs) => [...fs, f]);
-    setSelectedFrameId(f.id);
-    setSelectedIds([]);
-    const r = canvasRect();
-    if (r) {
-      const z = viewRef.current.z;
-      const { w, h } = frameSizeOf(f);
-      setView({
-        x: r.width / 2 - (f.x + w / 2) * z,
-        y: r.height / 2 - (f.y + h / 2) * z,
-        z,
-      });
-    }
-  };
-
-  const patchFrame = (id: string, patch: Partial<Frame>) => {
-    snapshotFor("frame:" + id + ":" + Object.keys(patch).join(","));
-    setFrames((fs) => fs.map((f) => (f.id === id ? { ...f, ...patch } : f)));
-  };
-
-  const setFramePreset = (id: string, preset: FramePreset) => {
-    const current = framesRef.current.find((f) => f.id === id);
-    if (!current) return;
-    const next = { ...current, ...framePresetPatch(preset) };
-    const before = frameSizeOf(current);
-    const after = frameSizeOf(next);
-    if (before.w === after.w && before.h === after.h) return;
-    const frames = framesRef.current;
-    /* the screens to the right move over, parts take the sizes the new screen calls for,
-     * and the screen is laid out again by the tidy rules */
-    const laid = carryFrame(groupsRef.current, current, next, frames, widthsRef.current);
-    /* a target the author never picked follows the screens */
-    if (platform === defaultPlatformOf(frames, frameRef.current)) setPlatform(null);
-    snapshot();
-    tidyRef.current = null;
-    setEasing(true);
-    window.setTimeout(() => setEasing(false), SETTLE_MS + 40);
-    setFrames(laid.frames);
-    setGroups(laid.groups);
-  };
-
-  /** the tidy button's state for the screen in play; the layout pass runs only when the document changes */
-  const tidyState = useMemo((): TidyState | null => {
-    if (!tidyTarget) return null;
-    const last = tidyRef.current;
-    if (last && last.frameId === tidyTarget.id && last.after === groups) return "undo";
-    return tidyFrame(groups, tidyTarget, frames, widths) ? "tidy" : "done";
-  }, [tidyTarget, groups, frames, widths]);
-
-  const tidy = (f: Frame) => {
-    const last = tidyRef.current;
-    if (last && last.frameId === f.id && last.after === groupsRef.current) {
-      snapshot();
-      setGroups(last.before);
-      tidyRef.current = null;
-      return;
-    }
-    const after = tidyFrame(groupsRef.current, f, framesRef.current, widthsRef.current);
-    if (!after) return;
-    snapshot();
-    tidyRef.current = { frameId: f.id, before: groupsRef.current, after };
-    setGroups(after);
-  };
-
-
-  /** sets where Tidy puts a screen's body, then tidies it that way */
-  const setPlace = (f: Frame, place: Place) => {
-    const next: Frame = { ...f, place: place === "top" ? undefined : place };
-    /* one undo step covers both the setting and the tidy it causes */
-    snapshot();
-    const frames = framesRef.current.map((o) => (o.id === f.id ? next : o));
-    setFrames(frames);
-    tidyRef.current = null;
-    const after = tidyFrame(groupsRef.current, next, frames, widthsRef.current);
-    if (!after) return;
-    tidyRef.current = { frameId: f.id, before: groupsRef.current, after };
-    setGroups(after);
-  };
-
-  const toastTimer = useRef<number | null>(null);
-  /** the desktop's message pill beside the tidy button; the phone keeps its centered toast */
-  const showAiNote = (text: string, icon = "check", ms = 2200) => {
-    setAiNote({ text, icon });
-    if (aiNoteTimer.current) window.clearTimeout(aiNoteTimer.current);
-    aiNoteTimer.current = window.setTimeout(() => setAiNote(null), ms);
-  };
-
-  const showToast = (msg: string, ms = 2200, icon = "info") => {
-    if (!mobileRef.current) {
-      showAiNote(msg, icon, ms);
-      return;
-    }
-    setToast(msg);
-    if (toastTimer.current) window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), ms);
-  };
-
-  const updateAiSettings = (s: AiSettings) => {
-    setAiSettings(s);
-    saveAiSettings(s);
-  };
-
-  const aiReady = hasKey(aiSettings) && aiSettings.model.trim().length > 0 && isSecureUrl(aiSettings.baseUrl);
-  const aiReason = !aiReady ? t("aiNoKey", lang) : !tidyTarget ? t("aiSelectScreen", lang) : undefined;
-
-  /** Writes one field with the model: a part's behavior note, or a screen's description.
-   *  The result goes straight in; the field remembers what it said so the rewrite can be undone. */
-  const runAi = async (action: AiActionKey, f: Frame, itemId?: string) => {
-    if (!aiReady) {
-      showToast(t("aiNoKey", lang));
-      return;
-    }
-    const curDoc = doc;
-    aiAbortRef.current?.abort();
-    const ac = new AbortController();
-    aiAbortRef.current = ac;
-    setAiBusy(true);
-    setAiFrameId(f.id);
-    try {
-      if (action === "describe") {
-        const r = await proposeDescription(aiSettings, curDoc, widthsRef.current, f, lang, ac.signal);
-        if (ac.signal.aborted) return;
-        snapshot();
-        setFrames((fs) => fs.map((x) => (x.id === f.id ? { ...x, note: r.note, noteHistory: pushHistory(x.noteHistory, x.note), name: r.name ?? x.name } : x)));
-        showAiNote(t("aiApplied", lang));
-        return;
-      }
-      if (!itemId) return;
-      const note = await proposeBehavior(aiSettings, curDoc, widthsRef.current, f, lang, itemId, ac.signal);
-      if (ac.signal.aborted) return;
-      if (!note) {
-        showToast(t("aiErrorJson", lang));
-        return;
-      }
-      snapshot();
-      setGroups((gs) => gs.map((g) => (g.items.some((it) => it.id === itemId) ? { ...g, items: g.items.map((it) => (it.id === itemId ? { ...it, note, noteHistory: pushHistory(it.noteHistory, it.note) } : it)) } : g)));
-      showAiNote(t("aiApplied", lang));
-    } catch (e) {
-      if (!ac.signal.aborted) showToast(aiErrorText(e, lang), 4000, "error");
-    } finally {
-      if (aiAbortRef.current === ac) {
-        aiAbortRef.current = null;
-        setAiBusy(false);
-        setAiFrameId(null);
-      }
-    }
-  };
-
-  const cancelAi = () => {
-    aiAbortRef.current?.abort();
-    aiAbortRef.current = null;
-    setAiBusy(false);
-    setAiFrameId(null);
-  };
-
-  useEffect(
-    () => () => {
-      aiAbortRef.current?.abort();
-      if (aiNoteTimer.current) window.clearTimeout(aiNoteTimer.current);
-      if (toastTimer.current) window.clearTimeout(toastTimer.current);
-    },
-    [],
-  );
-
-  /** a screen takes everything on it along, and links into it are dropped */
-  const deleteFrame = useCallback(
-    (id: string) => {
-      snapshot();
-      const gone = new Set(
-        groupsRef.current
-          .filter((g) => frameOfGroup(g, framesRef.current, widthsRef.current)?.id === id)
-          .map((g) => g.id),
-      );
-      setFrames((fs) =>
-        fs
-          .filter((f) => f.id !== id)
-          .map((f) => {
-            if (!f.swipe) return f;
-            const swipe = Object.fromEntries(Object.entries(f.swipe).filter(([, to]) => to !== id));
-            return { ...f, swipe: Object.keys(swipe).length ? swipe : undefined };
-          }),
-      );
-      setGroups((gs) =>
-        gs
-          .filter((g) => !gone.has(g.id))
-          .map((g) => ({
-            ...g,
-            items: g.items.map((it) => {
-              const next = { ...it };
-              if (next.action?.to === id) next.action = undefined;
-              if (next.actions) {
-                const actions = Object.fromEntries(Object.entries(next.actions).filter(([, a]) => a.to !== id));
-                next.actions = Object.keys(actions).length ? actions : undefined;
-              }
-              return next;
-            }),
-          })),
-      );
-      setSelectedFrameId(null);
-      setSelectedIds((cur) => cur.filter((x) => !groupsRef.current.some((g) => gone.has(g.id) && g.items.some((it) => it.id === x))));
-    },
-    [snapshot],
-  );
-
-  const duplicateFrame = (id: string) => {
-    const f = framesRef.current.find((x) => x.id === id);
-    if (!f) return;
-    snapshot();
-    const nf: Frame = {
-      ...f,
-      id: uid(),
-      name: `${f.name}${t("copySuffix")}`,
-      x: nextFrameX(),
-    };
-    const dx = nf.x - f.x;
-    const copies = groupsRef.current
-      .filter(
-        (g) => frameOfGroup(g, framesRef.current, widthsRef.current)?.id === id,
-      )
-      .map((g) => {
-        const idMap = new Map(g.items.map((it) => [it.id, uid()]));
-        const pos = g.pos
-          ? Object.fromEntries(Object.entries(g.pos).map(([id, o]) => [idMap.get(id) ?? id, o]))
-          : undefined;
-        return {
-          ...g,
-          id: uid(),
-          x: g.x + dx,
-          pos,
-          items: g.items.map((it) => ({
-            ...it,
-            id: idMap.get(it.id)!,
-            tabs: it.tabs?.map((t) => ({ ...t })),
-          })),
-        };
-      });
-    setFrames((fs) => [...fs, nf]);
-    setGroups((gs) => [...gs, ...copies]);
-    setSelectedFrameId(nf.id);
-  };
-  const duplicateFrameRef = useRef(duplicateFrame);
-  duplicateFrameRef.current = duplicateFrame;
-
-  /** The screen is re-rendered offscreen at 1:1 with static parts, so the
-   *  canvas zoom, selection outlines and in-flight animations never leak into the PNG. */
-  const saveFrameImage = async (f: Frame) => {
-    setExportFrame(f);
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
-    try {
-      await document.fonts?.ready;
-      const el = document.querySelector<HTMLElement>(`[data-export="${f.id}"]`);
-      if (!el) return;
-      const { w, h } = frameSizeOf(f);
-      const url = await toPng(el, { pixelRatio: 2, cacheBust: true, width: w, height: h });
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${f.name || "screen"}.png`;
-      a.click();
-    } finally {
-      setExportFrame(null);
-    }
-  };
-
-  /** the runs of one screen drawn with plain divs: the export layer */
-  const renderExport = (f: Frame) => {
-    const gs = groups.filter((g) => frameOfGroup(g, frames, widths)?.id === f.id);
-    const { w, h } = frameSizeOf(f);
-    return (
-      <div
-        data-export={f.id}
-        style={{
-          position: "relative",
-          width: w,
-          height: h,
-          background: p[f.bg ?? "surface"],
-          overflow: "hidden",
-        }}
-      >
-        {gs.map((g) =>
-          g.free ? (
-            ((corners) =>
-            layoutOf(g, widths).map((pl) => (
-              <div key={pl.item.id} style={{ position: "absolute", left: pl.x - f.x, top: pl.y - f.y, zIndex: modalRailOf(g) ? 2 : undefined }}>
-                <M3Static
-                  item={pl.item}
-                  palette={p}
-                  radii={corners.get(pl.item.id)}
-                  style={MEASURED.includes(pl.item.kind) ? undefined : { width: pl.w, height: pl.h }}
-                />
-              </div>
-            )))(freeRadii(g, widths))
-          ) : (
-          <div
-            key={g.id}
-            style={{
-              position: "absolute",
-              left: g.x - f.x,
-              top: g.y - f.y,
-              zIndex: modalRailOf(g) ? 2 : undefined,
-              display: "flex",
-              flexDirection: g.axis === "x" ? "row" : "column",
-              alignItems: g.axis === "x" ? "center" : "stretch",
-              gap: GAP,
-            }}
-          >
-            {g.items.map((it, i) => {
-              const conn = connectSpecOf(it);
-              const n = g.items.length;
-              const radii =
-                conn && n > 1
-                  ? runRadii(g.axis, i === 0, i === n - 1, false, false, 0, conn.outer, conn.inner)
-                  : conn
-                    ? uniformRadii(conn.outer)
-                    : baseRadii(it);
-              return (
-                <M3Static
-                  key={it.id}
-                  item={it}
-                  palette={p}
-                  radii={radii}
-                  style={MEASURED.includes(it.kind) ? undefined : { width: sizeOf(it, widths).w, height: sizeOf(it, widths).h }}
-                />
-              );
-            })}
-          </div>
-          ),
-        )}
-        {gs.some((g) => modalRailOf(g)) && (
-          <div aria-hidden style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.32)", pointerEvents: "none", zIndex: 1 }} />
-        )}
-      </div>
-    );
-  };
-
-  /** the view before the preview opened, restored when it closes */
-  const viewBeforePreview = useRef<View | null>(null);
-  /** the opening scheduled after the glide, while it is still pending */
-  const previewTimer = useRef<number | null>(null);
-  /** the camera's return scheduled after a close, with the view it is heading back to */
-  const returnTimer = useRef<{ id: number; view: View } | null>(null);
-  const cancelReturn = () => {
-    if (returnTimer.current !== null) window.clearTimeout(returnTimer.current.id);
-    returnTimer.current = null;
-  };
-  useEffect(() => () => {
-    if (previewTimer.current !== null) window.clearTimeout(previewTimer.current);
-    if (returnTimer.current !== null) window.clearTimeout(returnTimer.current.id);
-  }, []);
-  /** the camera glides for a moment: a screen is brought to the center before the
-   *  preview opens over it, and the view returns once the preview closes */
-  const glide = (v: View) => {
-    setCameraEasing(true);
-    setView(v);
-    window.setTimeout(() => setCameraEasing(false), SETTLE_MS + 40);
-  };
-  const openPreview = (startId?: string | null) => {
-    if (frame !== "phone") {
-      changeFrame("phone");
-    }
-    queueMicrotask(() => {
-      const id = startId ?? selectedFrameId ?? framesRef.current[0]?.id ?? null;
-      const f = framesRef.current.find((x) => x.id === id);
-      const r = canvasRect();
-      if (f && r) {
-        /* the preview's own fit and center, in window coordinates: its stage is sized for the
-         * largest screen and sits left of the control column, so the screen lands where the
-         * preview will show it */
-        const { w, h } = frameSizeOf(f);
-        const wide = window.innerWidth >= 720;
-        const maxW = Math.max(...framesRef.current.map((x) => frameSizeOf(x).w)) + BEZEL * 2;
-        const maxH = Math.max(...framesRef.current.map((x) => frameSizeOf(x).h)) + BEZEL * 2;
-        const z = clamp(Math.min(1.4, (window.innerHeight - 32) / maxH, (window.innerWidth - (wide ? 236 : 16)) / maxW), MIN_Z, MAX_Z);
-        const cx = (window.innerWidth - (wide ? 220 : 0)) / 2 - r.left;
-        const cy = window.innerHeight / 2 - (wide ? 0 : 28) - r.top;
-        /* reopening while the camera is still returning keeps the view it was returning
-         * to; reopening during the opening glide keeps the view already captured */
-        if (returnTimer.current !== null) {
-          viewBeforePreview.current = returnTimer.current.view;
-          cancelReturn();
-        } else if (previewTimer.current === null) {
-          viewBeforePreview.current = viewRef.current;
-        }
-        glide({ x: cx - (f.x + w / 2) * z, y: cy - (f.y + h / 2) * z, z });
-        if (previewTimer.current !== null) window.clearTimeout(previewTimer.current);
-        previewTimer.current = window.setTimeout(() => {
-          previewTimer.current = null;
-          /* the screen may have gone while the camera moved: an undo can remove it */
-          if (framesRef.current.some((x) => x.id === id)) setPreviewId(id);
-          else abandonPreview();
-        }, SETTLE_MS);
-      } else {
-        setPreviewId(id);
-      }
-    });
-  };
-  /** Gives up an opening that has not happened yet and brings the camera straight back. */
-  const abandonPreview = () => {
-    if (previewTimer.current !== null) window.clearTimeout(previewTimer.current);
-    previewTimer.current = null;
-    cancelReturn();
-    const back = viewBeforePreview.current;
-    viewBeforePreview.current = null;
-    if (back) glide(back);
-  };
-  const closePreview = () => {
-    setPreviewId(null);
-    const back = viewBeforePreview.current;
-    viewBeforePreview.current = null;
-    cancelReturn();
-    if (back) returnTimer.current = { id: window.setTimeout(() => { returnTimer.current = null; glide(back); }, 220), view: back };
-  };
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (editAccess !== "editable") return;
-      const t = e.target as HTMLElement;
-      const typing =
-        t &&
-        (t.tagName === "INPUT" ||
-          t.tagName === "TEXTAREA" ||
-          t.isContentEditable);
-      if (typing) return;
-      // dialogs and the preview own the keyboard while they are up
-      if (confirmClear || pendingImport !== null || shareOpen || previewId !== null) return;
-      const mod = e.ctrlKey || e.metaKey;
-      if (mod && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        if (e.shiftKey) redo();
-        else undo();
-        return;
-      }
-      if (mod && e.key.toLowerCase() === "y") {
-        e.preventDefault();
-        redo();
-        return;
-      }
-      if (mod && e.key.toLowerCase() === "d") {
-        e.preventDefault();
-        if (selectedIds.length === 0 && selectedFrameId) duplicateFrameRef.current(selectedFrameId);
-        else duplicateSelected();
-        return;
-      }
-      if (mod && e.key.toLowerCase() === "c") {
-        /* with nothing selected, or text highlighted somewhere, the browser keeps its own copy */
-        if (selectedIds.length === 0 || window.getSelection()?.toString()) return;
-        e.preventDefault();
-        copySelected();
-        return;
-      }
-      if (mod && e.key.toLowerCase() === "v") {
-        if (!clipboardRef.current) return;
-        e.preventDefault();
-        pasteClipboard();
-        return;
-      }
-      if (mod && e.key.toLowerCase() === "g") {
-        e.preventDefault();
-        if (e.shiftKey) ungroupSelected();
-        else groupSelected();
-        return;
-      }
-      if (e.key === " " && !e.repeat) {
-        e.preventDefault();
-        setSpaceHeld(true);
-        return;
-      }
-      if (e.key === "Delete" || e.key === "Backspace") {
-        e.preventDefault();
-        if (selectedIds.length === 0 && selectedFrameId)
-          deleteFrame(selectedFrameId);
-        else deleteSelected();
-        return;
-      }
-      if (e.key === "Escape") {
-        setSelectedIds([]);
-        setSelectedFrameId(null);
-        setSelectedLinkId(null);
-        return;
-      }
-      if (e.key === "p" || e.key === "P") {
-        openPreviewRef.current();
-        return;
-      }
-      if (e.key.startsWith("Arrow")) {
-        e.preventDefault();
-        const s = e.shiftKey ? 8 : 1;
-        nudge(
-          e.key === "ArrowLeft" ? -s : e.key === "ArrowRight" ? s : 0,
-          e.key === "ArrowUp" ? -s : e.key === "ArrowDown" ? s : 0,
-        );
-        return;
-      }
-      if (mod) return;
-      if (e.key === "v" || e.key === "V") setMode("select");
-      if (e.key === "h" || e.key === "H") setMode("hand");
-      if (e.key === "=" || e.key === "+") setZoomAt(viewRef.current.z * 1.2);
-      if (e.key === "-" || e.key === "_") setZoomAt(viewRef.current.z / 1.2);
-      if (e.key === "0") fitRef.current();
-    };
-    const onKeyUp = (e: KeyboardEvent) => {
-      if (e.key === " ") setSpaceHeld(false);
-    };
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("keyup", onKeyUp);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("keyup", onKeyUp);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    deleteSelected,
-    duplicateSelected,
-    copySelected,
-    pasteClipboard,
-    groupSelected,
-    ungroupSelected,
-    nudge,
-    redo,
-    undo,
-    setZoomAt,
-    selectedIds,
-    selectedFrameId,
-    deleteFrame,
-    confirmClear,
-    pendingImport,
-    shareOpen,
-    previewId,
-    editAccess,
-  ]);
-  const openPreviewRef = useRef(openPreview);
-  openPreviewRef.current = openPreview;
-
-  /* ---------- render ---------- */
-  const dragSize = drag ? sizeOf(drag.item, widths) : { w: 0, h: 0 };
-  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
-  const doc: Doc = useMemo(
-    () => ({ groups, frames, paletteKey, frame, title, brief, promptEdit, platform: platform ?? undefined, customPalette: customPalette ?? undefined, dynamicColor, theme }),
-    [groups, frames, paletteKey, frame, title, brief, promptEdit, platform, customPalette, dynamicColor, theme],
-  );
-  /** the same document, for callbacks that were created on an earlier render */
-  const docRef = useRef(doc);
-  docRef.current = doc;
-
-  /** arrows from tappable parts to the frames they open */
-  const links = useMemo(() => {
-    if (frame !== "phone") return [];
-    const rects = itemRects();
-    const out: {
-      id: string;
-      d: string;
-      mx: number;
-      my: number;
-      tx: number;
-      ty: number;
-      ang: number;
-      t: Transition;
-    }[] = [];
-    for (const g of groups) {
-      for (const it of g.items) {
-        for (const { slot, action } of actionsOf(it)) {
-        if (action.to === BACK_TARGET) continue;
-        const f = frames.find((x) => x.id === action.to);
-        const r = rects.find((x) => x.id === it.id);
-        if (!f || !r) continue;
-        const fr = frameRect(f);
-        const rightward = (fr.l + fr.r) / 2 >= (r.l + r.r) / 2;
-        const sx = rightward ? r.r : r.l;
-        const sy = (r.t + r.b) / 2;
-        const tx = rightward ? fr.l - BEZEL : fr.r + BEZEL;
-        const ty = clamp(sy, fr.t + 40, fr.b - 40);
-        const dx = Math.max(60, Math.abs(tx - sx) * 0.5);
-        const c1x = sx + (rightward ? dx : -dx);
-        const c2x = tx + (rightward ? -dx : dx);
-        const d = `M${sx} ${sy} C${c1x} ${sy} ${c2x} ${ty} ${tx} ${ty}`;
-        // midpoint of the cubic at t = 0.5
-        const mx = 0.125 * sx + 0.375 * c1x + 0.375 * c2x + 0.125 * tx;
-        const my = 0.125 * sy + 0.375 * sy + 0.375 * ty + 0.125 * ty;
-        out.push({
-          id: `${it.id}|${slot}`,
-          d,
-          mx,
-          my,
-          tx,
-          ty,
-          ang: rightward ? 0 : 180,
-          t: action.transition,
-        });
-        }
-      }
-    }
-    return out;
-  }, [groups, frames, frame, itemRects, widths]);
-
-  /** apply a change to the action behind a link id ("itemId|slot") */
-  const patchLink = (linkId: string, fn: (a: Action) => Action | undefined) => {
-    const [itemId, slot] = linkId.split("|");
-    setGroups((gs) =>
-      gs.map((g) => ({
-        ...g,
-        items: g.items.map((it) => {
-          if (it.id !== itemId) return it;
-          if (!slot) return { ...it, action: it.action ? fn(it.action) : undefined };
-          const cur = it.actions?.[slot];
-          if (!cur) return it;
-          const next = fn(cur);
-          const actions = { ...(it.actions ?? {}) };
-          if (next) actions[slot] = next;
-          else delete actions[slot];
-          return { ...it, actions: Object.keys(actions).length ? actions : undefined };
-        }),
-      })),
-    );
-  };
-
-  const setLinkTransition = (linkId: string, transition: Transition) => {
-    snapshotFor("link:" + linkId);
-    patchLink(linkId, (a) => ({ ...a, transition }));
-  };
-  const removeLink = (linkId: string) => {
-    snapshot();
-    patchLink(linkId, () => undefined);
-    setSelectedLinkId(null);
-  };
-
-  const runRadii = (
-    axis: Axis,
-    first: boolean,
-    last: boolean,
-    prevPh: boolean,
-    nextPh: boolean,
-    pull: number,
-    outer: number,
-    inner: number,
-  ): Radii => {
-    const soft = lerp(outer, inner, pull);
-    const s = first ? outer : prevPh ? soft : inner;
-    const e = last ? outer : nextPh ? soft : inner;
-    return axis === "x"
-      ? { tl: s, bl: s, tr: e, br: e }
-      : { tl: s, tr: s, bl: e, br: e };
-  };
-
-  /** which frame each run sits on (phone mode only) */
-  const frameOf = useMemo(() => {
-    const m = new Map<string, string>();
-    if (frame !== "phone") return m;
-    for (const g of groups) {
-      const f = frameOfGroup(g, frames, widths);
-      if (f) m.set(g.id, f.id);
-    }
-    return m;
-  }, [groups, frames, frame, widths]);
-
-  /** the screen whose layers the panel lists: the selection's, else the chosen one */
-  const layersFrame = useMemo(() => {
-    if (frame !== "phone") return null;
-    if (primaryId) {
-      const g = groups.find((x) => x.items.some((it) => it.id === primaryId));
-      const fid = g ? frameOf.get(g.id) : undefined;
-      if (fid) return frames.find((f) => f.id === fid) ?? null;
-    }
-    if (selectedFrameId) return frames.find((f) => f.id === selectedFrameId) ?? null;
-    return frames.find((f) => f.id === layersFrameId) ?? frames[0] ?? null;
-  }, [frame, primaryId, groups, frameOf, frames, selectedFrameId, layersFrameId]);
-  const layerGroups = useMemo(
-    () => (layersFrame ? groups.filter((g) => frameOf.get(g.id) === layersFrame.id) : []),
-    [groups, frameOf, layersFrame],
-  );
-  /** A drag in the layers panel is one undo step: the snapshot is taken when it starts,
-   *  and the reorders it fires along the way record nothing more. */
-  const layerDragRef = useRef(false);
-  const onLayerDragging = (dragging: boolean) => {
-    if (dragging && !layerDragRef.current) snapshot();
-    layerDragRef.current = dragging;
-  };
-  const layerSnapshot = (key: string) => {
-    if (!layerDragRef.current) snapshotFor(key);
-  };
-
-  const reorderLayers = (topFirst: string[]) => {
-    const inFrame = new Set(topFirst);
-    const byId = new Map(groupsRef.current.map((g) => [g.id, g]));
-    const ordered = [...topFirst].reverse().map((id) => byId.get(id)).filter((g): g is Group => !!g);
-    if (ordered.length !== inFrame.size) return;
-    layerSnapshot("layers:" + (layersFrame?.id ?? ""));
-    for (const id of inFrame) instantRef.current.add(id);
-    setGroups((gs) => [...gs.filter((g) => !inFrame.has(g.id)), ...ordered]);
-  };
-
-  /** flips a group's lock from its row's lock icon in the Layers panel */
-  const toggleGroupLock = (id: string) => {
-    snapshot();
-    setGroups((prev) => prev.map((g) => (g.id === id ? { ...g, locked: !g.locked } : g)));
-  };
-
-  /** The parts of one group in a new order: reading order for a connected run, back to
-   *  front for a free group. Inside a free group a hidden run keeps its slots, handed out
-   *  again in the new order, so reordering a list really moves its rows. */
-  const reorderGroupItems = (groupId: string, order: string[]) => {
-    const g = groupsRef.current.find((x) => x.id === groupId);
-    if (!g || g.locked) return;
-    const byId = new Map(g.items.map((it) => [it.id, it]));
-    const items = order.map((id) => byId.get(id)).filter((it): it is Item => !!it);
-    if (items.length !== g.items.length || new Set(order).size !== order.length) return;
-    layerSnapshot("layers:items:" + groupId);
-    instantRef.current.add(groupId);
-    if (!g.free) {
-      setGroups((gs) => gs.map((x) => (x.id === groupId ? { ...x, items } : x)));
-      return;
-    }
-    const rank = new Map(items.map((it, i) => [it.id, i]));
-    const pos = { ...(g.pos ?? {}) };
-    for (const run of explodeGroup(g, widthsRef.current)) {
-      if (run.items.length < 2) continue;
-      const slots = run.items.map((it) => pos[it.id] ?? { x: 0, y: 0 });
-      const members = [...run.items].sort((a, b) => rank.get(a.id)! - rank.get(b.id)!);
-      members.forEach((it, i) => {
-        pos[it.id] = slots[i];
-      });
-    }
-    setGroups((gs) => gs.map((x) => (x.id === groupId ? { ...x, items, pos } : x)));
-  };
-
-  const renderGroup = (g: Group, ox: number, oy: number) => {
-    const modalRail = modalRailOf(g);
-    if (g.free) {
-      const instantG = instantRef.current.has(g.id);
-      const allOn = g.items.every((it) => selectedSet.has(it.id));
-      /* explode once: the runs feed both the corner radii and the lift gate below */
-      const runs = explodeGroup(g, widths);
-      const corners = radiiOfRuns(runs);
-      /* hidden runs are connected too: only their members may lift above siblings when selected */
-      const runIds = new Set(
-        runs
-          .filter((r) => r.items.length > 1)
-          .flatMap((r) => r.items.map((it) => it.id)),
-      );
-      return (
-        <motion.div
-          key={g.id}
-          initial={false}
-          animate={{ x: g.x - ox, y: g.y - oy }}
-          transition={instantG ? INSTANT : OPEN}
-          /* keep any selection lift inside the group, so canvas-wide layer order is preserved */
-          style={{ position: "absolute", left: 0, top: 0, zIndex: modalRail ? 2 : undefined, isolation: "isolate" }}
-        >
-          {layoutOf(g, widths).map((pl) => (
-            <div key={pl.item.id} style={{ position: "absolute", left: pl.x - g.x, top: pl.y - g.y }}>
-              <M3Node
-                item={pl.item}
-                palette={p}
-                widths={widths}
-                radii={corners.get(pl.item.id)}
-                pressed={false}
-                selected={selectedSet.has(pl.item.id)}
-                inRun={runIds.has(pl.item.id)}
-                interactive={!handMode}
-                onPointerDown={(e) => onItemPointerDown(e, g, pl.index, pl.item)}
-              />
-            </div>
-          ))}
-          {allOn && (
-            <div
-              aria-hidden
-              style={{
-                position: "absolute",
-                left: -6,
-                top: -6,
-                width: groupBounds(g, widths).r - g.x + 12,
-                height: groupBounds(g, widths).b - g.y + 12,
-                border: `${1.5 / view.z}px dashed ${p.primary}`,
-                borderRadius: 10,
-                pointerEvents: "none",
-              }}
-            />
-          )}
-        </motion.div>
-      );
-    }
-    const snap = drag?.active && drag.snap?.groupId === g.id ? drag.snap : null;
-    const pull = snap?.pull ?? 0;
-    const phMain = snap ? (g.axis === "x" ? dragSize.w : dragSize.h) * pull : 0;
-    const shift = snap && snap.index === 0 ? -(phMain + GAP) : 0;
-    const conn = g.items[0] ? connectSpecOf(g.items[0]) : undefined;
-
-    type Cell = { ph: true } | { ph: false; item: Item; index: number };
-    const cells: Cell[] = [];
-    for (let i = 0; i <= g.items.length; i++) {
-      if (snap && snap.index === i) cells.push({ ph: true });
-      if (i < g.items.length)
-        cells.push({ ph: false, item: g.items[i], index: i });
-    }
-    const m = cells.length;
-    const instant = instantRef.current.has(g.id);
-
-    return (
-      <motion.div
-        key={g.id}
-        initial={false}
-        animate={{
-          x: g.x - ox + (g.axis === "x" ? shift : 0),
-          y: g.y - oy + (g.axis === "y" ? shift : 0),
-        }}
-        transition={instant ? INSTANT : OPEN}
-        style={{
-          zIndex: modalRail ? 2 : undefined,
-          position: "absolute",
-          left: 0,
-          top: 0,
-          display: "flex",
-          flexDirection: g.axis === "x" ? "row" : "column",
-          alignItems: g.axis === "x" ? "center" : "stretch",
-          gap: GAP,
-          /* keep any selection lift inside the run, so canvas-wide layer order is preserved */
-          isolation: "isolate",
-        }}
-      >
-        {cells.map((c, r) => {
-          if (c.ph) {
+    const up = (e: PointerE…20680 tokens truncated…  if (c.ph) {
             return (
               <motion.div
                 key="__gap"
@@ -3841,8 +1738,8 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
             zoom={view.z}
             onZoom={(z) => setZoomAt(z)}
             onFit={fit}
-            canUndo={pastRef.current.length > 0}
-            canRedo={futureRef.current.length > 0}
+            canUndo={historyRef.current.past.length > 0}
+            canRedo={historyRef.current.future.length > 0}
             onUndo={undo}
             onRedo={redo}
             onClear={() => {
