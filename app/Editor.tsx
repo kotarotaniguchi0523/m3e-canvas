@@ -1,5 +1,5 @@
-Warning: truncated output (original token count: 40766)
-Total output lines: 4339
+Warning: truncated output (original token count: 40798)
+Total output lines: 4340
 
 "use client";
 
@@ -10,6 +10,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useOptimistic,
   useRef,
   useState,
   useTransition,
@@ -447,8 +448,12 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   const [isMobile, setIsMobile] = useState(false);
   const [sheet, setSheet] = useState<"edit" | "settings" | "lang" | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
-  /** frame being rendered offscreen for the PNG export */
-  const [exportFrame, setExportFrame] = useState<Frame | null>(null);
+  /**
+   * The export render must appear during the save action even though its normal
+   * state update would be deferred by the transition. It rolls back to null
+   * automatically when the action succeeds or fails.
+   */
+  const [exportFrame, setOptimisticExportFrame] = useOptimistic<Frame | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const setTitle = (value: string) => patchDoc({ title: value });
   const setBrief = (value: string) => patchDoc({ brief: value });
@@ -1053,14 +1058,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
       const py = pinch.my - (r?.top ?? 0);
       setView({
         x: px - ((px - pinch.vx) * z) / pinch.z0 + (mx - pinch.mx),
-        y: py - ((py - pinch.vy) * z) / pinch.z0 + (my - pinch.my),
-        z,
-      });
-    };
-    const up = (e: PointerEvent) => {
-      if (e.pointerType !== "touch") return;
-      touchesRef.current.delete(e.pointerId);
-      if (touchesRef.current.size <…20766 tokens truncated…             key="__gap"
+        y: py - ((py - pinch.vy) * z) / pinch.z0 + (my - pinch.…20798 tokens truncated…             key="__gap"
                 initial={g.axis === "x" ? { width: 0 } : { height: 0 }}
                 animate={
                   g.axis === "x" ? { width: phMain } : { height: phMain }
