@@ -1155,8 +1155,21 @@ export const KIND_ORDER: Kind[] = [
   "circularProgress",
 ];
 
+/** Runtime boundary for JSON and other untyped input. */
+export const isKind = (value: unknown): value is Kind => typeof value === "string" && (KIND_ORDER as readonly string[]).includes(value);
+
 /* ---------- screen data ---------- */
 export type NavTab = { icon: string; label: string };
+
+/** Stable keys used by the editor for icon and navigation slots. */
+export type TabSlotKey = `tab:${number}`;
+export type IconSlotKey = "icon" | "icon2" | TabSlotKey;
+export type ItemActions = Partial<Record<IconSlotKey, Action>>;
+
+export const tabSlotKey = (index: number): TabSlotKey => `tab:${index}`;
+
+export const isTabSlotKey = (key: string): key is TabSlotKey => /^tab:\d+$/.test(key);
+export const isIconSlotKey = (key: string): key is IconSlotKey => key === "icon" || key === "icon2" || isTabSlotKey(key);
 
 export type Item = {
   id: string;
@@ -1217,7 +1230,7 @@ export type Item = {
   /** tap navigation to another frame */
   action?: Action;
   /** per-slot tap navigation for bars: "icon" / "icon2" on a top app bar, "tab:N" on a navigation bar */
-  actions?: Record<string, Action>;
+  actions?: ItemActions;
   /** the look a toggle button takes once tapped; undefined = not a toggle */
   toggle?: ToggleLook;
 };
@@ -1225,7 +1238,9 @@ export type Item = {
 export type ToggleLook = { icon?: string | null; variant?: Variant; label?: string };
 
 /** kinds that can act as a toggle button in the preview */
-export const TOGGLEABLE: Kind[] = ["button", "iconButton", "fab", "extendedFab"];
+export const TOGGLEABLE = ["button", "iconButton", "fab", "extendedFab"] as const satisfies readonly Kind[];
+export type ToggleableKind = (typeof TOGGLEABLE)[number];
+export const isToggleableKind = (kind: Kind): kind is ToggleableKind => (TOGGLEABLE as readonly Kind[]).includes(kind);
 
 /** target id that pops the preview stack instead of opening a frame */
 export const BACK_TARGET = "back";
@@ -1264,8 +1279,8 @@ export const TRANSITIONS: { key: Transition; label: string; icon: string }[] = [
 /** slots on a bar that can each carry their own tap action */
 export function actionSlotsOf(it: Item): IconSlot[] {
   if (it.kind === "topAppBar" || it.kind === "bottomNav" || it.kind === "navRail" || it.kind === "toolbar") return iconSlotsOf(it).filter((s) => !!s.value);
-  if (it.kind === "fabMenu") return (it.tabs ?? []).map((t, i) => ({ key: `tab:${i}`, label: t.label || `${i + 1}`, value: t.icon || null }));
-  if (it.kind === "tabs") return (it.tabs ?? []).map((t, i) => ({ key: `tab:${i}`, label: t.label || `${i + 1}`, value: null }));
+  if (it.kind === "fabMenu") return (it.tabs ?? []).map((t, i) => ({ key: tabSlotKey(i), label: t.label || `${i + 1}`, value: t.icon || null }));
+  if (it.kind === "tabs") return (it.tabs ?? []).map((t, i) => ({ key: tabSlotKey(i), label: t.label || `${i + 1}`, value: null }));
   return [];
 }
 
@@ -1280,15 +1295,19 @@ export function collapseFree(g: Group, widths: Record<string, number>): Group {
 }
 
 /** every navigation an item carries: its own action plus per-slot ones */
-export function actionsOf(it: Item): { slot: string; action: Action }[] {
-  const out: { slot: string; action: Action }[] = [];
+export type ActionSlotKey = "" | IconSlotKey;
+
+export function actionsOf(it: Item): { slot: ActionSlotKey; action: Action }[] {
+  const out: { slot: ActionSlotKey; action: Action }[] = [];
   if (it.action) out.push({ slot: "", action: it.action });
-  for (const [slot, action] of Object.entries(it.actions ?? {})) if (action) out.push({ slot, action });
+  for (const [slot, action] of Object.entries(it.actions ?? {})) if (action && isIconSlotKey(slot)) out.push({ slot, action });
   return out;
 }
 
 /** kinds a user can tap in the preview */
-export const TAPPABLE: Kind[] = ["button", "iconButton", "fab", "extendedFab", "chip", "listItem", "card", "image", "text", "splitButton", "radio"];
+export const TAPPABLE = ["button", "iconButton", "fab", "extendedFab", "chip", "listItem", "card", "image", "text", "splitButton", "radio"] as const satisfies readonly Kind[];
+export type TappableKind = (typeof TAPPABLE)[number];
+export const isTappableKind = (kind: Kind): kind is TappableKind => (TAPPABLE as readonly Kind[]).includes(kind);
 
 /** palette roles a user may pick as a background */
 export type ColorToken =
@@ -1469,7 +1488,9 @@ export const frameRect = (f: Frame) => {
 export const frameRadius = (f: Frame) => (isPhoneFrame(f) ? PHONE_R : DESKTOP_R);
 
 /** parts that span the screen edge to edge and follow its width when it changes */
-export const FULL_WIDTH: Kind[] = ["topAppBar", "bottomNav", "tabs"];
+export const FULL_WIDTH = ["topAppBar", "bottomNav", "tabs"] as const satisfies readonly Kind[];
+export type FullWidthKind = (typeof FULL_WIDTH)[number];
+export const isFullWidth = (kind: Kind): kind is FullWidthKind => (FULL_WIDTH as readonly Kind[]).includes(kind);
 
 /** a part no taller than the screen it is placed on: a box or a rail sized to a phone shrinks to a shorter screen */
 export function fitHeight(it: Item, screenH: number): Item {
@@ -1491,7 +1512,7 @@ export function carryItemSize(it: Item, from: { w: number; h: number }, to: { w:
   if (spec.size && (spec.size.icon === "width" || keepsShape)) {
     /* only a size that is a width; a text size or an icon button's square are left alone */
     const cur = it.size ?? spec.defSize ?? spec.w;
-    if (FULL_WIDTH.includes(it.kind)) {
+    if (isFullWidth(it.kind)) {
       /* a bar the author narrowed on purpose stays narrow; one that spanned the screen still does */
       if (cur === from.w || cur > to.w) patch.size = to.w;
     } else if (keepsShape) {
@@ -1720,7 +1741,9 @@ export function makeItem(kind: Kind): Item {
 }
 
 /** Content-sized kinds are measured in the DOM; the rest derive from spec + size. */
-export const MEASURED: Kind[] = ["button", "extendedFab", "chip", "switch", "checkbox", "text", "splitButton", "radio", "badge"];
+export const MEASURED = ["button", "extendedFab", "chip", "switch", "checkbox", "text", "splitButton", "radio", "badge"] as const satisfies readonly Kind[];
+export type MeasuredKind = (typeof MEASURED)[number];
+export const isMeasured = (kind: Kind): kind is MeasuredKind => (MEASURED as readonly Kind[]).includes(kind);
 
 /** Progress track thickness range in dp; Material's standard bar is 4 and its thick bar 8. */
 export const TRACK_MIN = 2;
@@ -1857,13 +1880,13 @@ function remapTabActions(actions: Item["actions"], to: (j: number) => number | u
   if (!actions) return undefined;
   const next: NonNullable<Item["actions"]> = {};
   for (const [key, a] of Object.entries(actions)) {
-    const m = /^tab:(\d+)$/.exec(key);
-    if (!m) {
+    if (!a || !isIconSlotKey(key)) continue;
+    if (!isTabSlotKey(key)) {
       next[key] = a;
       continue;
     }
-    const j = to(Number(m[1]));
-    if (j !== undefined) next[`tab:${j}`] = a;
+    const j = to(Number(key.slice(4)));
+    if (j !== undefined) next[tabSlotKey(j)] = a;
   }
   return Object.keys(next).length ? next : undefined;
 }
@@ -1920,7 +1943,7 @@ export const canJoin = (a: Item, b: Item) => {
 };
 
 /* ---------- icon slots ---------- */
-export type IconSlot = { key: string; label: string; value: string | null };
+export type IconSlot = { key: IconSlotKey; label: string; value: string | null };
 
 export function iconSlotsOf(it: Item): IconSlot[] {
   switch (it.kind) {
@@ -1935,14 +1958,14 @@ export function iconSlotsOf(it: Item): IconSlot[] {
     case "navRail":
     case "toolbar":
       return (it.tabs ?? []).map((t, i) => ({
-        key: `tab:${i}`,
+        key: tabSlotKey(i),
         label: `${i + 1}`,
         value: t.icon || null,
       }));
     case "fabMenu":
       return [
         { key: "icon", label: t("icon"), value: it.icon },
-        ...(it.tabs ?? []).map((t, i) => ({ key: `tab:${i}`, label: `${i + 1}`, value: t.icon || null })),
+        ...(it.tabs ?? []).map((t, i) => ({ key: tabSlotKey(i), label: `${i + 1}`, value: t.icon || null })),
       ];
     default:
       return KIND_SPEC[it.kind].hasIcon
@@ -1951,7 +1974,7 @@ export function iconSlotsOf(it: Item): IconSlot[] {
   }
 }
 
-export function setIconSlot(it: Item, key: string, v: string | null): Partial<Item> {
+export function setIconSlot(it: Item, key: IconSlotKey | "toggle", v: string | null): Partial<Item> {
   if (key === "icon") return { icon: v };
   if (key === "icon2") return { icon2: v };
   if (key === "toggle") return { toggle: { ...(it.toggle ?? {}), icon: v } };

@@ -1,7 +1,7 @@
 "use client";
 
 import { LazyMotion, domMax, m, useDragControls } from "motion/react";
-import { CONTRASTS, Contrast, FONTS, KIND_SPEC, NavTab, PALETTES, Palette, SHAPES, ShapeScale, Theme, defaultTabsFor } from "@/lib/tokens";
+import { CONTRASTS, Contrast, FONTS, KIND_SPEC, NavTab, PALETTES, Palette, SHAPES, ShapeScale, Theme, defaultTabsFor, isToggleableKind, tabSlotKey } from "@/lib/tokens";
 import { ensureFontLoaded } from "@/lib/theme";
 import { KIND_TEXT, LANGS, Lang, t, useLang } from "@/lib/i18n";
 import { IconPickerDisclosure } from "./IconPickerDisclosure";
@@ -199,7 +199,7 @@ export function MobileInspector({
                   />
                 )}
                 {model.kind !== "tabs" && !isSelect && (
-                  <IconPickerDisclosure name={`mobile-tabs-${model.id}`} value={tab.icon || null} label={t("changeIcon", lang)} palette={p} size={48} onChange={(icon) => dispatch({ kind: "set-icon-slot", slot: `tab:${i}`, value: icon })} />
+                  <IconPickerDisclosure name={`mobile-tabs-${model.id}`} value={tab.icon || null} label={t("changeIcon", lang)} palette={p} size={48} onChange={(icon) => dispatch({ kind: "set-icon-slot", slot: tabSlotKey(i), value: icon })} />
                 )}
                 {model.kind !== "toolbar" && (
                   <Field value={tab.label} onChange={(label) => dispatch({ kind: "set-tabs", tabs: tabs.map((x, j) => (j === i ? { ...x, label } : x)), selected: tabsModel.selected, actions: tabsModel.actions })} placeholder={t("label", lang)} p={p} height={48} />
@@ -265,7 +265,7 @@ export function MobileInspector({
       )}
 
       <Row icon="bolt" label={t("behavior", lang)} p={p}>
-        <Field value={behavior.note} onChange={(note) => dispatch({ kind: "set-note", value: note })} placeholder={["button", "fab", "iconButton", "extendedFab"].includes(model.kind) ? t("whenPressed", lang) : t("whatItDoes", lang)} p={p} icon="bolt" height={48} />
+        <Field value={behavior.note} onChange={(note) => dispatch({ kind: "set-note", value: note })} placeholder={isToggleableKind(model.kind) ? t("whenPressed", lang) : t("whatItDoes", lang)} p={p} icon="bolt" height={48} />
       </Row>
     </div>
   );

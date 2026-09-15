@@ -300,6 +300,7 @@ describe("iconSlotsOf / setIconSlot", () => {
 
   it("setIconSlot with unknown key returns empty patch", () => {
     const it: Item = { id: "1", kind: "button", label: "B", icon: "add", variant: "filled" };
+    // @ts-expect-error Persisted/editor slot keys are closed at the command boundary.
     expect(setIconSlot(it, "made-up", "x")).toEqual({});
   });
 });
@@ -444,4 +445,3 @@ describe("card image placement helpers", () => {
     expect(cardLayoutPatch("none")).toEqual({ noImage: true, imagePos: undefined });
   });
 });
-

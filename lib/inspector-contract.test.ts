@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { frameSizeOf, makeItem, type Frame, type Group } from "./tokens";
-import { applyToggleLookCommand, selectInspectorSurface, type SelectInspectorSurfaceInput } from "./inspector-contract";
+import { applyToggleLookCommand, selectInspectorSurface, type InspectorCommand, type SelectInspectorSurfaceInput } from "./inspector-contract";
 
 const home: Frame = { id: "home", name: "Home", x: 0, y: 0 };
 const details: Frame = { id: "details", name: "Details", x: 400, y: 0, w: 1024, h: 768 };
@@ -184,5 +184,23 @@ describe("applyToggleLookCommand", () => {
 
     // Assert
     expect(next).toEqual({ label: "Selected", icon: null, variant: "filled" });
+  });
+});
+
+describe("inspector command boundaries", () => {
+  it("keeps a command kind paired with a closed slot payload", () => {
+    // Arrange
+    const command = {
+      target: "item",
+      id: "button",
+      command: { kind: "set-action", slot: "tab:2", value: undefined },
+    } satisfies InspectorCommand;
+
+    // Act / Assert
+    expect(command.command.kind).toBe("set-action");
+
+    // @ts-expect-error Unknown slot keys must not enter the typed command boundary.
+    const invalid: InspectorCommand = { target: "item", id: "button", command: { kind: "set-action", slot: "made-up", value: undefined } };
+    expect(invalid.target).toBe("item");
   });
 });

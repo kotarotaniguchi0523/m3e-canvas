@@ -37,7 +37,29 @@ export function variantsOf(kind: Kind): { key: Variant; label: string }[] {
         key: "text",
         label: t("standard"),
       });
-    default:
+    case "box":
+    case "button":
+    case "topAppBar":
+    case "bottomNav":
+    case "navRail":
+    case "searchBar":
+    case "listItem":
+    case "dialog":
+    case "snackbar":
+    case "switch":
+    case "checkbox":
+    case "slider":
+    case "text":
+    case "image":
+    case "camera":
+    case "map":
+    case "divider":
+    case "loadingIndicator":
+    case "linearProgress":
+    case "circularProgress":
+    case "tabs":
+    case "radio":
+    case "badge":
       return variants;
   }
 }

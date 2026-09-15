@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
+import type { Kind } from "./tokens";
 
 export type Lang = "ja" | "en" | "zh" | "ko";
 export const LANGS: { key: Lang; label: string }[] = [
@@ -30,7 +31,7 @@ export const SEED_TEXT: Record<Lang, { favorite: string; share: string; inbox: s
 };
 
 /** ponytail: matches defaults by text; add provenance if authored copies must be distinguished. */
-export function translateDefaultText(value: string, kind: string, field: "label" | "supporting" | "tab", lang: Lang): string {
+export function translateDefaultText(value: string, kind: Kind, field: "label" | "supporting" | "tab", lang: Lang): string {
   for (const { key: from } of LANGS) {
     if (field === "tab") {
       const labels = (l: Lang) => kind === "tabs" ? TAB_LABELS[l] : kind === "select" ? SELECT_OPTIONS[l] : (kind === "fabMenu" ? FAB_MENU_TABS[l] : NAV_TABS[l]).map((tab) => tab.label);
@@ -504,7 +505,7 @@ export const t = (key: UIKey, lang: Lang = current): string => (lang === "ko" ? 
 
 export const KIND_TEXT: Record<
   Lang,
-  Record<string, { noun: string; label?: string; supporting?: string }>
+  Record<Kind, { noun: string; label?: string; supporting?: string }>
 > = {
   ja: {
     box: { noun: "ボックス" },

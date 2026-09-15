@@ -7,6 +7,8 @@ import {
   iconSlotsOf,
   isPhoneFrame,
   isWideRail,
+  type IconSlotKey,
+  type ItemActions,
   type Action,
   type AlignKind,
   type CardAlign,
@@ -94,10 +96,9 @@ export type ItemTextModel = {
 };
 
 export type ItemTabsModel = {
-  kind: Kind;
   tabs: readonly NavTab[];
   selected: number | undefined;
-  actions: Readonly<Record<string, Action>>;
+  actions: Readonly<ItemActions>;
 };
 
 export type ItemMediaModel = {
@@ -149,7 +150,7 @@ export type ItemGeometryModel = {
 
 export type ItemNavigationModel = {
   slots: readonly {
-    key: string;
+    key: IconSlotKey | "default";
     label: string;
     icon: string | null;
     action: Action | null;
@@ -210,6 +211,9 @@ export type AiCapability =
   | { kind: "ready"; run(): void }
   | { kind: "running"; cancel(): void };
 
+/** `null` represents the item's single default action; named actions use an icon slot key. */
+export type InspectorNavigationSlotKey = IconSlotKey;
+
 export type ItemCommand =
   | { kind: "align"; value: AlignKind }
   | { kind: "set-label"; value: string }
@@ -218,8 +222,8 @@ export type ItemCommand =
   | { kind: "set-content-align"; value: CardAlign }
   | { kind: "set-text-color"; value: TextToken | undefined }
   | { kind: "set-variant"; value: Variant }
-  | { kind: "set-icon-slot"; slot: string; value: string | null }
-  | { kind: "set-tabs"; tabs: readonly NavTab[]; selected: number | undefined; actions: Readonly<Record<string, Action>> | undefined }
+  | { kind: "set-icon-slot"; slot: IconSlotKey; value: string | null }
+  | { kind: "set-tabs"; tabs: readonly NavTab[]; selected: number | undefined; actions: Readonly<ItemActions> | undefined }
   | { kind: "set-card-layout"; value: CardLayout }
   | { kind: "set-image-size"; value: number | undefined }
   | { kind: "set-image-source"; value: string | undefined }
@@ -238,7 +242,7 @@ export type ItemCommand =
   | { kind: "set-size2"; value: number | undefined }
   | { kind: "set-radius"; side: "top" | "bottom"; value: number | undefined }
   | { kind: "set-corners"; value: Radii | undefined; radiusTop: number | undefined; radiusBottom: number | undefined }
-  | { kind: "set-action"; slot: string | null; value: Action | undefined }
+  | { kind: "set-action"; slot: InspectorNavigationSlotKey | null; value: Action | undefined }
   | { kind: "set-note"; value: string | undefined }
   | { kind: "restore-note"; value: string; history: readonly string[] | undefined }
   | { kind: "delete" }
@@ -273,6 +277,7 @@ export function applyToggleLookCommand(current: ToggleLook | undefined, command:
     case "set-variant":
       return { ...(current ?? {}), variant: command.value };
   }
+  return assertInspectorNever(command, "Unhandled toggle command");
 }
 
 export type FrameCommand =
@@ -303,6 +308,11 @@ export type InspectorCommand =
   | { target: "frame"; id: string; command: FrameCommand };
 
 export type InspectorDispatch = (command: InspectorCommand) => void;
+
+/** Keep every discriminated-union switch closed when a new variant is added. */
+export function assertInspectorNever(value: never, label: string): never {
+  throw new Error(`${label}: ${String(value)}`);
+}
 
 export type SelectInspectorSurfaceInput = {
   selectedIds: readonly string[];
@@ -399,7 +409,7 @@ export function selectInspectorSurface(input: SelectInspectorSurfaceInput): Insp
 
   const actions = actionSlotsOf(selectedItem);
   const actionTargets = frameMode === "phone" ? frames.map(({ id, name }) => ({ id, label: name })) : [];
-  const navigationSlots = actions.length
+  const navigationSlots: ItemNavigationModel["slots"] = actions.length
     ? actions.map((slot) => ({
         key: slot.key,
         label: slot.label,
@@ -445,7 +455,6 @@ export function selectInspectorSurface(input: SelectInspectorSurfaceInput): Insp
         ...(selectedItem.tabs
           ? {
               tabs: {
-                kind: selectedItem.kind,
                 tabs: selectedItem.tabs,
                 selected: selectedItem.selected,
                 actions: selectedItem.actions ?? {},

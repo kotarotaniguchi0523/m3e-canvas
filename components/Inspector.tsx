@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Action,
   BACK_TARGET,
@@ -14,8 +15,7 @@ import {
   Palette,
   SWIPE_DIRS,
   SwipeDir,
-  TAPPABLE,
-  TOGGLEABLE,
+  isToggleableKind,
   TRANSITIONS,
   Transition,
   Variant,
@@ -25,6 +25,8 @@ import {
   maxRingThickness,
   contentWidth,
   defaultTabsFor,
+  isIconSlotKey,
+  isTabSlotKey,
   CardAlign,
   cardDefaultFillOf,
   CARD_IMAGE_MIN,
@@ -32,6 +34,7 @@ import {
   onToken,
   variantStyle,
   scaleR,
+  tabSlotKey,
   AlignKind,
 } from "@/lib/tokens";
 import { IconPickerDisclosure } from "./IconPickerDisclosure";
@@ -39,8 +42,9 @@ import { Icon } from "./M3Node";
 import { ButtonRun, CardLayoutPicker, CornerIcon, Field, IconBtn, Section, Segmented, SizePresets, Slider, TextTokenChips, TidyButton, Toggle, TokenChips } from "./ui";
 import { AiWriteBtn } from "./AiPanel";
 import { KIND_TEXT, SWIPE_TEXT, TRANSITION_TEXT, UIKey, t, useLang } from "@/lib/i18n";
-import { applyToggleLookCommand } from "@/lib/inspector-contract";
+import { applyToggleLookCommand, assertInspectorNever } from "@/lib/inspector-contract";
 import { variantsOf, widthPresetLabel } from "@/lib/inspector-view";
+import type { ItemActions } from "@/lib/tokens";
 import type {
   AiCapability,
   FrameCommand,
@@ -397,40 +401,23 @@ function FrameAppearanceSection({ model, p, dispatch }: { model: FrameInspectorM
   );
 }
 
-function SwipeDirectionDisclosure({ direction, target, frames, p, onChange }: { direction: { key: SwipeDir; icon: string }; target: string | null; frames: readonly { id: string; label: string; preset?: FramePreset }[]; p: Palette; onChange: (target: string | null) => void }) {
-  const lang = useLang();
-  return (
-    <details style={{ borderRadius: 16, background: p.surfaceContainerHigh, overflow: "hidden" }}>
-      <summary style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 40, padding: "0 12px", cursor: "pointer", listStyle: "none", color: p.onSurfaceVariant, fontSize: 13, fontWeight: 600 }}>
-        <Icon name={direction.icon} size={18} />
-        <span style={{ flex: 1 }}>{SWIPE_TEXT[lang][direction.key]}</span>
-        {target && <span style={{ width: 7, height: 7, borderRadius: 4, background: p.primary }} />}
-        <Icon name="expand_more" size={18} />
-      </summary>
-      <div style={{ padding: "0 10px 10px" }}>
-        <FrameChips frames={frames} value={target} onChange={onChange} p={p} small />
-      </div>
-    </details>
-  );
-}
-
 function FrameNavigationSection({ model, p, dispatch }: { model: FrameInspectorModel; p: Palette; dispatch: (command: FrameCommand) => void }) {
   const lang = useLang();
+  const [swipeDir, setSwipeDir] = useState<SwipeDir>("left");
   if (model.navigation.targets.length <= 1) return null;
+  const swipe = model.navigation.swipe.find((value) => value.direction === swipeDir);
   const frames = model.navigation.targets.filter((target) => target.id !== model.id);
   return (
     <Section id="frame-swipe" icon="swipe" title={t("swipeTo", lang)} p={p}>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {SWIPE_DIRS.map((direction) => (
-          <SwipeDirectionDisclosure
-            key={direction.key}
-            direction={direction}
-            target={model.navigation.swipe.find((value) => value.direction === direction.key)?.target ?? null}
-            frames={frames}
-            p={p}
-            onChange={(target) => dispatch({ kind: "set-swipe", direction: direction.key, target })}
-          />
-        ))}
+        <Segmented<SwipeDir>
+          options={SWIPE_DIRS.map((direction) => ({ key: direction.key, icon: direction.icon, title: SWIPE_TEXT[lang][direction.key], dot: !!model.navigation.swipe.find((value) => value.direction === direction.key)?.target }))}
+          value={swipeDir}
+          onChange={setSwipeDir}
+          p={p}
+          height={36}
+        />
+        <FrameChips frames={frames} value={swipe?.target ?? null} onChange={(target) => dispatch({ kind: "set-swipe", direction: swipeDir, target })} p={p} small />
       </div>
     </Section>
   );
@@ -558,8 +545,11 @@ function ItemHeader({ kind, p, dispatch }: { kind: Kind; p: Palette; dispatch: (
   );
 }
 
-function ToggleAppearanceSection({ enabled, p, onEnabledChange }: { enabled: boolean; p: Palette; onEnabledChange: (enabled: boolean) => void }) {
+type ToggleEditorTab = "normal" | "on";
+
+function ToggleAppearanceSection({ toggle, tab, p, onEnabledChange, onTabChange }: { toggle: ItemStyleModel["toggle"]; tab: ToggleEditorTab; p: Palette; onEnabledChange: (enabled: boolean) => void; onTabChange: (tab: ToggleEditorTab) => void }) {
   const lang = useLang();
+  const enabled = toggle !== undefined;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "10px 4px 12px", marginBottom: 12 }}>
       <Toggle
@@ -570,6 +560,21 @@ function ToggleAppearanceSection({ enabled, p, onEnabledChange }: { enabled: boo
         label={t("toggle", lang)}
         grow
       />
+      {enabled && (
+        <>
+          <Segmented<"normal" | "on">
+            options={[
+              { key: "normal", icon: "radio_button_unchecked", label: t("normalState", lang) },
+              { key: "on", icon: "check_circle", label: t("onState", lang) },
+            ]}
+            value={tab}
+            onChange={onTabChange}
+            p={p}
+            height={36}
+          />
+          {tab === "on" && <div style={{ fontSize: 11, color: p.onSurfaceVariant, padding: "0 4px" }}>{t("onStateHint", lang)}</div>}
+        </>
+      )}
     </div>
   );
 }
@@ -681,20 +686,20 @@ function TabsSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemTabs
   const growsFreely = isSelect || kind === "tabs";
   const hasSelected = kind === "bottomNav" || kind === "navRail" || kind === "tabs" || isSelect;
   const selectedTab = isSelect && model.selected === undefined ? -1 : Math.min(model.selected ?? 0, Math.max(0, tabs.length - 1));
-  const remapActions = (actions: Readonly<Record<string, Action>>, to: (index: number) => number | undefined) => {
-    const next: Record<string, Action> = {};
+  const remapActions = (actions: ItemTabsModel["actions"], to: (index: number) => number | undefined): ItemTabsModel["actions"] | undefined => {
+    const next: ItemActions = {};
     for (const [key, action] of Object.entries(actions)) {
-      const match = /^tab:(\d+)$/.exec(key);
-      if (!match) {
+      if (!action || !isIconSlotKey(key)) continue;
+      if (!isTabSlotKey(key)) {
         next[key] = action;
         continue;
       }
-      const index = to(Number(match[1]));
-      if (index !== undefined) next["tab:" + index] = action;
+      const index = to(Number(key.slice(4)));
+      if (index !== undefined) next[tabSlotKey(index)] = action;
     }
     return Object.keys(next).length ? next : undefined;
   };
-  const setTabs = (next: readonly NavTab[], selected = model.selected, actions: Readonly<Record<string, Action>> | undefined = model.actions) => {
+  const setTabs = (next: readonly NavTab[], selected = model.selected, actions: ItemTabsModel["actions"] | undefined = model.actions) => {
     dispatch({ kind: "set-tabs", tabs: next, selected, actions });
   };
   const setTabCount = (count: number) => {
@@ -723,7 +728,7 @@ function TabsSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemTabs
       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
           {tabs.map((tab, index) => {
             const selected = selectedTab === index;
-          const slotKey = "tab:" + index;
+          const slotKey = tabSlotKey(index);
           return (
             <div key={index} style={{ display: "flex", gap: 6, alignItems: "center" }}>
               {hasSelected && (
@@ -733,7 +738,7 @@ function TabsSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemTabs
                 <IconPickerDisclosure name={`tabs-${kind}`} value={tab.icon || null} label={t("changeIcon", lang)} palette={p} size={40} onChange={(icon) => dispatch({ kind: "set-icon-slot", slot: slotKey, value: icon })} />
               )}
               {tabLabels && <Field value={tab.label} onChange={(label) => setTabs(tabs.map((current, j) => j === index ? { ...current, label } : current))} placeholder={t("label", lang)} p={p} height={40} />}
-              {tabIcons && tab.icon && <IconBtn icon="close" p={p} size={40} onClick={() => dispatch({ kind: "set-icon-slot", slot: "tab:" + index, value: null })} title={t("noIcon", lang)} />}
+              {tabIcons && tab.icon && <IconBtn icon="close" p={p} size={40} onClick={() => dispatch({ kind: "set-icon-slot", slot: tabSlotKey(index), value: null })} title={t("noIcon", lang)} />}
               {growsFreely && tabs.length > 1 && <IconBtn icon="close" p={p} size={40} onClick={() => removeTab(index)} title={t(isSelect ? "removeOption" : "removeTab", lang)} />}
             </div>
           );
@@ -787,7 +792,7 @@ function MediaSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemMed
             {model.src && <IconBtn icon="close" p={p} size={44} onClick={() => dispatch({ kind: "set-image-source", value: undefined })} title={t("removeImage", lang)} />}
           </div>
           <div style={{ marginTop: 8 }}>
-            <UrlField key={model.src?.startsWith("http") ? model.src : model.src ? "local-image" : "empty"} value={model.src && /^https?:\/\//.test(model.src) ? model.src : ""} onChange={(src) => dispatch({ kind: "set-image-source", value: src })} placeholder={t("imageUrl", lang)} p={p} />
+            <UrlField key={model.src?.startsWith("http") ? "remote-image" : "local-image-or-empty"} value={model.src && /^https?:\/\//.test(model.src) ? model.src : ""} onChange={(src) => dispatch({ kind: "set-image-source", value: src })} placeholder={t("imageUrl", lang)} p={p} />
           </div>
         </>
       )}
@@ -961,34 +966,28 @@ function GeometrySection({ kind, model, state, frameSize, p, dispatch }: { kind:
 
 function NavigationSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemNavigationModel; p: Palette; dispatch: (command: ItemNavigationCommand) => void }) {
   const lang = useLang();
+  type SlotKey = ItemNavigationModel["slots"][number]["key"];
+  const [actionSlot, setActionSlot] = useState<SlotKey | null>(null);
   const slots = model.slots;
   if (!slots.length || !model.targets.length) return null;
-  const summaryStyle = kind === "tabs"
-    ? { height: 32, padding: "0 12px", borderRadius: 8, maxWidth: "100%", cursor: "pointer", fontSize: 13, fontWeight: 600, border: "1px solid " + p.outline, color: p.onSurfaceVariant, display: "flex", alignItems: "center", gap: 6, listStyle: "none" as const }
-    : { height: 40, padding: "0 14px", cursor: "pointer", fontSize: 13, fontWeight: 600, color: p.onSurfaceVariant, display: "flex", alignItems: "center", gap: 8, listStyle: "none" as const };
+  const activeKey = actionSlot && slots.some((slot) => slot.key === actionSlot) ? actionSlot : slots[0]?.key;
+  const active = slots.find((slot) => slot.key === activeKey);
   return (
     <Section id="action" icon="ads_click" title={t("tapTo", lang)} p={p}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {slots.length === 1 ? (
-          <ActionEditor frames={model.targets} action={slots[0].action ?? undefined} onChange={(value) => dispatch({ kind: "set-action", slot: slots[0].key === "default" ? null : slots[0].key, value })} p={p} />
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {slots.map((slot) => (
-              <details key={slot.key} style={{ borderRadius: 12, background: p.surfaceContainerHigh, overflow: "hidden" }}>
-                <summary title={slot.label} style={summaryStyle}>
-                  {kind === "tabs" && slot.action && <Icon name="ads_click" size={16} />}
-                  {kind !== "tabs" && slot.icon && <Icon name={slot.icon} size={18} />}
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{slot.label}</span>
-                  {slot.action && kind !== "tabs" && <span style={{ width: 7, height: 7, borderRadius: 4, background: p.primary }} />}
-                  <Icon name="expand_more" size={18} />
-                </summary>
-                <div style={{ padding: "0 10px 10px" }}>
-                  <ActionEditor frames={model.targets} action={slot.action ?? undefined} onChange={(value) => dispatch({ kind: "set-action", slot: slot.key === "default" ? null : slot.key, value })} p={p} />
-                </div>
-              </details>
-            ))}
-          </div>
+        {slots.length > 1 && (
+          kind === "tabs" ? (
+            <div role="radiogroup" aria-label={t("tapTo", lang)} style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {slots.map((slot) => {
+                const selected = slot.key === activeKey;
+                return <button key={slot.key} onClick={() => setActionSlot(slot.key)} title={slot.label} role="radio" aria-checked={selected} className="m3-press" style={{ height: 32, padding: "0 12px", borderRadius: 8, maxWidth: "100%", cursor: "pointer", fontSize: 13, fontWeight: 600, border: "1px solid " + (selected ? "transparent" : p.outline), background: selected ? p.primary : "transparent", color: selected ? p.onPrimary : p.onSurfaceVariant, display: "inline-flex", alignItems: "center", gap: 6 }}>{slot.action && <Icon name="ads_click" size={16} />}<span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{slot.label}</span></button>;
+              })}
+            </div>
+          ) : (
+            <Segmented<SlotKey> options={slots.map((slot) => ({ key: slot.key, icon: slot.icon ?? undefined, label: slot.icon ? undefined : slot.label, title: slot.label, dot: !!slot.action }))} value={activeKey ?? slots[0].key} onChange={setActionSlot} p={p} height={40} />
+          )
         )}
+        {active && <ActionEditor frames={model.targets} action={active.action ?? undefined} onChange={(value) => dispatch({ kind: "set-action", slot: active.key === "default" ? null : active.key, value })} p={p} />}
       </div>
     </Section>
   );
@@ -1066,58 +1065,27 @@ function ToggleItemSections({ model, p, dispatch }: { model: ItemInspectorModel;
   return <ToggleStateSections kind={model.kind} text={text} icons={media?.src ? undefined : icons} toggle={style.toggle} normalVariant={style.variant} p={p} dispatch={dispatch} />;
 }
 
-function ToggleStatePanels({ model, p, dispatch }: { model: ItemInspectorModel; p: Palette; dispatch: (command: ItemCommand) => void }) {
-  const lang = useLang();
-  const style = model.sections.style;
-  if (!style.toggle) return null;
-  const toggleDispatch = (command: ToggleLookCommand) => dispatch({ kind: "set-toggle", value: applyToggleLookCommand(style.toggle, command) });
-  const closeOtherPanel = (event: React.SyntheticEvent<HTMLDetailsElement>) => {
-    if (!event.currentTarget.open) return;
-    event.currentTarget.parentElement?.querySelectorAll<HTMLDetailsElement>("details[data-toggle-state]").forEach((panel) => {
-      if (panel !== event.currentTarget) panel.open = false;
-    });
-  };
-  const summaryStyle = { display: "flex", alignItems: "center", gap: 8, minHeight: 40, padding: "0 12px", cursor: "pointer", listStyle: "none", color: p.onSurfaceVariant, fontSize: 13, fontWeight: 600 } as const;
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-      <details data-toggle-state={model.id} onToggle={closeOtherPanel} style={{ borderRadius: 16, background: p.surfaceContainerHigh, overflow: "hidden" }}>
-        <summary style={summaryStyle}>
-          <Icon name="radio_button_unchecked" size={18} />
-          <span style={{ flex: 1 }}>{t("normalState", lang)}</span>
-          <Icon name="expand_more" size={18} />
-        </summary>
-        <div style={{ padding: "0 10px 10px" }}>
-          <NormalItemSections model={model} p={p} dispatch={dispatch} />
-        </div>
-      </details>
-      <details data-toggle-state={model.id} open onToggle={closeOtherPanel} style={{ borderRadius: 16, background: p.surfaceContainerHigh, overflow: "hidden" }}>
-        <summary style={summaryStyle}>
-          <Icon name="check_circle" size={18} />
-          <span style={{ flex: 1 }}>{t("onState", lang)}</span>
-          <Icon name="expand_more" size={18} />
-        </summary>
-        <div style={{ padding: "0 10px 10px" }}>
-          <div style={{ fontSize: 11, color: p.onSurfaceVariant, padding: "4px 4px 10px" }}>{t("onStateHint", lang)}</div>
-          <ToggleItemSections model={model} p={p} dispatch={toggleDispatch} />
-        </div>
-      </details>
-    </div>
-  );
+function ToggleOnStateSections({ model, p, dispatch }: { model: ItemInspectorModel; p: Palette; dispatch: (command: ItemCommand) => void }) {
+  const toggle = model.sections.style.toggle;
+  if (!toggle) return null;
+  return <ToggleItemSections model={model} p={p} dispatch={(command) => dispatch({ kind: "set-toggle", value: applyToggleLookCommand(toggle, command) })} />;
 }
 
 function ItemInspectorBody({ model, palette: p, dispatch }: { model: ItemInspectorModel; palette: Palette; dispatch: (command: ItemCommand) => void }) {
   const style = model.sections.style;
   const toggleEnabled = style.toggle !== undefined;
+  const [toggleTab, setToggleTab] = useState<ToggleEditorTab>("normal");
 
   const setToggleEnabled = (enabled: boolean) => {
+    setToggleTab("normal");
     dispatch({ kind: "set-toggle", value: enabled ? {} : undefined });
   };
 
   return (
     <div className="no-scrollbar" style={{ padding: "12px 12px 20px", overflowY: "auto", height: "100%" }}>
       <ItemHeader kind={model.kind} p={p} dispatch={dispatch} />
-      {TOGGLEABLE.includes(model.kind) && <ToggleAppearanceSection enabled={toggleEnabled} p={p} onEnabledChange={setToggleEnabled} />}
-      {toggleEnabled ? <ToggleStatePanels model={model} p={p} dispatch={dispatch} /> : <NormalItemSections model={model} p={p} dispatch={dispatch} />}
+      {isToggleableKind(model.kind) && <ToggleAppearanceSection toggle={style.toggle} tab={toggleTab} p={p} onEnabledChange={setToggleEnabled} onTabChange={setToggleTab} />}
+      {toggleEnabled && toggleTab === "on" ? <ToggleOnStateSections model={model} p={p} dispatch={dispatch} /> : <NormalItemSections model={model} p={p} dispatch={dispatch} />}
     </div>
   );
 }
@@ -1172,5 +1140,7 @@ export function InspectorHost({ surface, palette: p, dispatch }: { surface: Insp
       return <ItemInspector model={surface.model} palette={p} dispatch={(command) => dispatch({ target: "item", id: surface.model.id, command })} />;
     case "frame":
       return <FrameInspector model={surface.model} palette={p} dispatch={(command) => dispatch({ target: "frame", id: surface.model.id, command })} />;
+    default:
+      return assertInspectorNever(surface, "Unhandled inspector surface");
   }
 }

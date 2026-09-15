@@ -7,7 +7,7 @@ import {
   H,
   Item,
   Kind,
-  MEASURED,
+  isMeasured,
   NAV_BAR_H,
   Palette,
   Radii,
@@ -414,7 +414,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
   const hasLabel = item.label.trim().length > 0;
   const hasSupporting = !!item.supporting?.trim();
 
-  if (MEASURED.includes(item.kind)) return <MeasuredContent item={item} p={p} />;
+  if (isMeasured(item.kind)) return <MeasuredContent item={item} p={p} />;
 
   switch (item.kind) {
     case "box":
@@ -1348,7 +1348,7 @@ export function M3Node({
   const radiusTransition = instantRail ? { duration: 0 } : RADIUS_TWEEN;
   const r = radii ?? baseRadii(item);
   const size = sizeOf(item, widths);
-  const measured = MEASURED.includes(item.kind) && !((item.kind === "switch" || item.kind === "button") && item.size);
+  const measured = isMeasured(item.kind) && !((item.kind === "switch" || item.kind === "button") && item.size);
   const clips = !NO_BOX.includes(item.kind) && item.kind !== "textField" && item.kind !== "select";
 
   return (
@@ -1416,7 +1416,7 @@ export function M3Static({
 }) {
   const r = radii ?? baseRadii(item);
   const size = sizeOf(item, {});
-  const measured = MEASURED.includes(item.kind) && !((item.kind === "switch" || item.kind === "button") && item.size);
+  const measured = isMeasured(item.kind) && !((item.kind === "switch" || item.kind === "button") && item.size);
   const clips = !NO_BOX.includes(item.kind) && item.kind !== "textField" && item.kind !== "select";
   return (
     <div

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import { Palette } from "@/lib/tokens";
 import { Icon } from "./M3Node";
 import { IconPicker } from "./IconPicker";
@@ -26,23 +27,14 @@ export function IconPickerDisclosure({
   size?: number;
   showLabel?: boolean;
 }) {
-  let disclosure: HTMLDetailsElement | null = null;
+  const disclosure = useRef<HTMLDetailsElement>(null);
   const close = () => {
-    if (disclosure) disclosure.open = false;
+    if (disclosure.current) disclosure.current.open = false;
   };
   return (
     <details
-      ref={(node) => {
-        disclosure = node;
-      }}
+      ref={disclosure}
       name={name}
-      data-disclosure-group={name}
-      onToggle={(event) => {
-        if (!event.currentTarget.open) return;
-        event.currentTarget.parentElement?.querySelectorAll<HTMLDetailsElement>("details").forEach((candidate) => {
-          if (candidate !== event.currentTarget && candidate.dataset.disclosureGroup === name) candidate.open = false;
-        });
-      }}
       style={{ position: "relative", display: "inline-block", flex: "0 0 auto" }}
     >
       <summary
