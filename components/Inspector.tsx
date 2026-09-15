@@ -804,7 +804,7 @@ function IconSection({ kind, model, style, navigation, p, editOn, change, dispat
   useEffect(() => {
     setSlotKey(slots[0]?.key ?? "icon");
     setPickerOpen(false);
-  }, [kind, slots.map((slot) => slot.key).join("|")]);
+  }, [editOn, kind, slots.map((slot) => slot.key).join("|")]);
   if (!activeSlot) return null;
   return (
     <Section id="icon" icon="emoji_symbols" title={t("icon", lang)} p={p} onToggle={(open) => { if (!open) setPickerOpen(false); }}>
@@ -841,10 +841,11 @@ function IconSection({ kind, model, style, navigation, p, editOn, change, dispat
 }
 
 function StyleSection({ kind, p, variant, change }: { kind: Kind; p: Palette; variant: Variant; change: (command: ItemCommand) => void }) {
+  const lang = useLang();
   const variants = KIND_SPEC[kind].hasVariant ? variantsOf(kind) : [];
   if (!variants.length || kind === "card") return null;
   return (
-    <Section id="style" icon="palette" title={t("style")} p={p}>
+    <Section id="style" icon="palette" title={t("style", lang)} p={p}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         {variants.map((value) => <VariantSwatch key={value.key} v={value.key} label={value.label} p={p} on={variant === value.key} onClick={() => change({ kind: "set-variant", value: value.key })} />)}
       </div>
@@ -856,9 +857,10 @@ function FillSection({ kind, p, style, dispatch }: { kind: Kind; p: Palette; sty
   const lang = useLang();
   const spec = KIND_SPEC[kind];
   if (!spec.hasFill) return null;
+  const fill = style.fill ?? (kind === "card" ? cardDefaultFillOf(style.variant) : "surfaceContainerLow");
   return (
     <Section id="fill" icon="format_color_fill" title={t("background", lang)} p={p}>
-      <TokenChips value={style.fill ?? "surfaceContainerLow"} onChange={(fill) => dispatch({ kind: "set-fill", value: fill })} p={p} none={kind === "card"} noneOn={kind === "card" && !style.fill} onNone={() => dispatch({ kind: "set-fill", value: undefined })} noneColor={kind === "card" ? p[cardDefaultFillOf(style.variant)] : undefined} noneTextColor={kind === "card" ? onToken(cardDefaultFillOf(style.variant), p) : undefined} noneIcon={kind === "card" ? "restart_alt" : undefined} noneLabel={kind === "card" ? t("defaultColor", lang) : undefined} />
+      <TokenChips value={fill} onChange={(value) => dispatch({ kind: "set-fill", value })} p={p} none={kind === "card"} noneOn={kind === "card" && !style.fill} onNone={() => dispatch({ kind: "set-fill", value: undefined })} noneColor={kind === "card" ? p[cardDefaultFillOf(style.variant)] : undefined} noneTextColor={kind === "card" ? onToken(cardDefaultFillOf(style.variant), p) : undefined} noneIcon={kind === "card" ? "restart_alt" : undefined} noneLabel={kind === "card" ? t("defaultColor", lang) : undefined} />
       {kind === "listItem" && (
         <>
           <div style={{ fontSize: 12, fontWeight: 600, color: p.onSurfaceVariant, margin: "10px 0 6px" }}>{t("iconBackground", lang)}</div>
@@ -1072,9 +1074,9 @@ export function ItemInspector({ model, palette: p, dispatch }: { model: ItemInsp
   );
 }
 
-function EmptyInspector() {
+function EmptyInspector({ p }: { p: Palette }) {
   return (
-    <div style={{ height: "100%", display: "grid", placeItems: "center", color: "var(--m3-outline-variant, #cac4d0)", padding: 24, textAlign: "center" }}>
+    <div style={{ height: "100%", display: "grid", placeItems: "center", color: p.outlineVariant, padding: 24, textAlign: "center" }}>
       <Icon name="ads_click" size={44} />
     </div>
   );
@@ -1111,7 +1113,7 @@ function SelectionInspector({ model, palette: p, dispatch }: { model: SelectionI
 export function InspectorHost({ surface, palette: p, dispatch }: { surface: InspectorSurface; palette: Palette; dispatch: InspectorDispatch }) {
   switch (surface.kind) {
     case "empty":
-      return <EmptyInspector />;
+      return <EmptyInspector p={p} />;
     case "selection":
       return <SelectionInspector model={surface.model} palette={p} dispatch={(command) => dispatch({ target: "selection", ids: surface.model.ids, command })} />;
     case "item":
