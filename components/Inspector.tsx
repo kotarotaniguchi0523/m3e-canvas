@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import {
   Action,
   BACK_TARGET,
@@ -19,7 +18,6 @@ import {
   TOGGLEABLE,
   TRANSITIONS,
   Transition,
-  VARIANTS,
   Variant,
   TRACK_DEFAULT,
   TRACK_MAX,
@@ -36,11 +34,13 @@ import {
   scaleR,
   AlignKind,
 } from "@/lib/tokens";
-import { IconPicker } from "./IconPicker";
+import { IconPickerDisclosure } from "./IconPickerDisclosure";
 import { Icon } from "./M3Node";
 import { ButtonRun, CardLayoutPicker, CornerIcon, Field, IconBtn, Section, Segmented, SizePresets, Slider, TextTokenChips, TidyButton, Toggle, TokenChips } from "./ui";
 import { AiWriteBtn } from "./AiPanel";
 import { KIND_TEXT, SWIPE_TEXT, TRANSITION_TEXT, UIKey, t, useLang } from "@/lib/i18n";
+import { applyToggleLookCommand } from "@/lib/inspector-contract";
+import { variantsOf, widthPresetLabel } from "@/lib/inspector-view";
 import type {
   AiCapability,
   FrameCommand,
@@ -48,17 +48,30 @@ import type {
   InspectorDispatch,
   InspectorSurface,
   ItemBehaviorModel,
+  ItemBehaviorCommand,
+  ItemFillCommand,
+  ItemGeometryCommand,
+  ItemHeaderCommand,
+  ItemIconCommand,
   ItemCommand,
   ItemGeometryModel,
   ItemIconModel,
   ItemInspectorModel,
+  ItemMediaCommand,
   ItemMediaModel,
+  ItemNavigationCommand,
   ItemNavigationModel,
+  ItemRailCommand,
   ItemRailModel,
+  ItemStateCommand,
   ItemStateModel,
+  ItemStyleCommand,
   ItemStyleModel,
+  ItemTabsCommand,
   ItemTabsModel,
+  ItemTextCommand,
   ItemTextModel,
+  ToggleLookCommand,
   SelectionCommand,
   SelectionInspectorModel,
 } from "@/lib/inspector-contract";
@@ -66,66 +79,53 @@ import type {
 /** A text field for a web address: what is typed stays in the box, and only a complete
  *  http(s) address (or an emptied box) reaches the part. */
 function UrlField({ value, onChange, placeholder, p }: { value: string; onChange: (src: string | undefined) => void; placeholder: string; p: Palette }) {
-  const [text, setText] = useState(value);
-  useEffect(() => setText(value), [value]);
+  const lang = useLang();
   return (
-    <div onBlurCapture={() => setText(value)}>
-      <Field
-        value={text}
-        onChange={(v) => {
-          setText(v);
-          const s = v.trim();
-          /* an emptied box removes a URL; a picked file (which shows as an empty box) is left alone */
-          if (!s && value) onChange(undefined);
-          else if (/^https?:\/\/\S+$/.test(s)) onChange(s);
-        }}
+    <div style={{ position: "relative", width: "100%" }}>
+      <span style={{ position: "absolute", left: 12, top: 12, color: p.onSurfaceVariant, pointerEvents: "none", lineHeight: 1 }}>
+        <Icon name="link" size={20} />
+      </span>
+      <input
+        key={value}
+        defaultValue={value}
+        aria-label={placeholder}
         placeholder={placeholder}
-        p={p}
-        icon="link"
+        onChange={(event) => {
+          const next = event.currentTarget.value.trim();
+          /* an emptied box removes a URL; a picked file (which shows as an empty box) is left alone */
+          if (!next && value) onChange(undefined);
+          else if (/^https?:\/\/\S+$/.test(next)) onChange(next);
+        }}
+        onBlur={(event) => {
+          event.currentTarget.value = value;
+        }}
+        style={{
+          width: "100%",
+          height: 44,
+          padding: `0 ${value ? 40 : 14}px 0 42px`,
+          borderRadius: 22,
+          border: "none",
+          background: p.surfaceContainerHigh,
+          color: p.onSurface,
+          fontSize: 14,
+          outline: "none",
+          boxSizing: "border-box",
+          fontFamily: "inherit",
+        }}
       />
+      {value && (
+        <button
+          onClick={() => onChange(undefined)}
+          title={t("clear", lang)}
+          aria-label={t("clear", lang)}
+          className="m3-press"
+          style={{ position: "absolute", right: 6, top: 7, width: 30, height: 30, borderRadius: 15, border: "none", background: "transparent", color: p.onSurfaceVariant, cursor: "pointer", display: "grid", placeItems: "center" }}
+        >
+          <Icon name="close" size={18} />
+        </button>
+      )}
     </div>
   );
-}
-
-export function variantsOf(kind: Kind): { key: Variant; label: string }[] {
-  const variants = VARIANTS.map((v) => ({ ...v, label: t(v.key) }));
-  switch (kind) {
-    case "card":
-      return [
-        { key: "tonal", label: t("filled") },
-        { key: "elevated", label: t("elevated") },
-        { key: "outlined", label: t("outlined") },
-      ];
-    case "textField":
-    case "select":
-      return [
-        { key: "outlined", label: t("outlined") },
-        { key: "filled", label: t("filled") },
-      ];
-    case "chip":
-      return [
-        { key: "outlined", label: t("outlined") },
-        { key: "tonal", label: t("elevated") },
-      ];
-    case "fab":
-    case "extendedFab":
-    case "fabMenu":
-      return variants.filter((v) => v.key !== "text" && v.key !== "elevated" && v.key !== "outlined");
-    case "splitButton":
-      return variants.filter((v) => v.key !== "text");
-    case "toolbar":
-      return [
-        { key: "tonal", label: t("standard") },
-        { key: "filled", label: t("vibrant") },
-      ];
-    case "iconButton":
-      return variants.filter((v) => v.key !== "elevated" && v.key !== "text").concat({
-        key: "text",
-        label: t("standard"),
-      });
-    default:
-      return variants;
-  }
 }
 
 export function VariantSwatch({
@@ -176,18 +176,6 @@ export function VariantSwatch({
 }
 
 const MAX_IMAGE_PX = 1200;
-
-/** hover text for a width preset derived from the selected frame */
-export const widthPresetLabel = (v: number, frameWidth = PHONE_W): string | undefined =>
-  v === frameWidth
-    ? t("screenWidth")
-    : v === contentWidth(frameWidth)
-      ? t("contentWidth")
-      : v === halfWidth(frameWidth)
-        ? t("halfWidth")
-        : frameWidth !== PHONE_W && v === CONTENT_W
-          ? t("columnWidth")
-          : undefined;
 
 const heightPresetLabel = (v: number, frameHeight = PHONE_H): string | undefined =>
   v === frameHeight ? t("screenHeight") : v === frameHeight / 2 ? t("halfHeight") : undefined;
@@ -409,22 +397,40 @@ function FrameAppearanceSection({ model, p, dispatch }: { model: FrameInspectorM
   );
 }
 
+function SwipeDirectionDisclosure({ direction, target, frames, p, onChange }: { direction: { key: SwipeDir; icon: string }; target: string | null; frames: readonly { id: string; label: string; preset?: FramePreset }[]; p: Palette; onChange: (target: string | null) => void }) {
+  const lang = useLang();
+  return (
+    <details style={{ borderRadius: 16, background: p.surfaceContainerHigh, overflow: "hidden" }}>
+      <summary style={{ display: "flex", alignItems: "center", gap: 8, minHeight: 40, padding: "0 12px", cursor: "pointer", listStyle: "none", color: p.onSurfaceVariant, fontSize: 13, fontWeight: 600 }}>
+        <Icon name={direction.icon} size={18} />
+        <span style={{ flex: 1 }}>{SWIPE_TEXT[lang][direction.key]}</span>
+        {target && <span style={{ width: 7, height: 7, borderRadius: 4, background: p.primary }} />}
+        <Icon name="expand_more" size={18} />
+      </summary>
+      <div style={{ padding: "0 10px 10px" }}>
+        <FrameChips frames={frames} value={target} onChange={onChange} p={p} small />
+      </div>
+    </details>
+  );
+}
+
 function FrameNavigationSection({ model, p, dispatch }: { model: FrameInspectorModel; p: Palette; dispatch: (command: FrameCommand) => void }) {
   const lang = useLang();
-  const [swipeDir, setSwipeDir] = useState<SwipeDir>("left");
   if (model.navigation.targets.length <= 1) return null;
-  const swipe = model.navigation.swipe.find((value) => value.direction === swipeDir);
+  const frames = model.navigation.targets.filter((target) => target.id !== model.id);
   return (
     <Section id="frame-swipe" icon="swipe" title={t("swipeTo", lang)} p={p}>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <Segmented<SwipeDir>
-          options={SWIPE_DIRS.map((direction) => ({ key: direction.key, icon: direction.icon, title: SWIPE_TEXT[lang][direction.key], dot: !!model.navigation.swipe.find((value) => value.direction === direction.key)?.target }))}
-          value={swipeDir}
-          onChange={setSwipeDir}
-          p={p}
-          height={36}
-        />
-        <FrameChips frames={model.navigation.targets.filter((target) => target.id !== model.id)} value={swipe?.target ?? null} onChange={(target) => dispatch({ kind: "set-swipe", direction: swipeDir, target })} p={p} small />
+        {SWIPE_DIRS.map((direction) => (
+          <SwipeDirectionDisclosure
+            key={direction.key}
+            direction={direction}
+            target={model.navigation.swipe.find((value) => value.direction === direction.key)?.target ?? null}
+            frames={frames}
+            p={p}
+            onChange={(target) => dispatch({ kind: "set-swipe", direction: direction.key, target })}
+          />
+        ))}
       </div>
     </Section>
   );
@@ -432,12 +438,6 @@ function FrameNavigationSection({ model, p, dispatch }: { model: FrameInspectorM
 
 function FrameExportSection({ model, p, dispatch }: { model: FrameInspectorModel; p: Palette; dispatch: (command: FrameCommand) => void }) {
   const lang = useLang();
-  const [copied, setCopied] = useState(false);
-  useEffect(() => {
-    if (!copied) return;
-    const timer = setTimeout(() => setCopied(false), 1400);
-    return () => clearTimeout(timer);
-  }, [copied]);
   const saving = model.export.image.kind === "running";
   const actionButton = (icon: string, label: string, onClick: () => void, busy = false) => (
     <button onClick={onClick} disabled={busy} className="m3-press" style={{ flex: 1, height: 44, borderRadius: 22, border: "none", background: p.secondaryContainer, color: p.onSecondaryContainer, fontSize: 13, fontWeight: 600, cursor: busy ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: busy ? 0.6 : 1 }}>
@@ -448,12 +448,7 @@ function FrameExportSection({ model, p, dispatch }: { model: FrameInspectorModel
   return (
     <Section id="frame-export" icon="ios_share" title={t("export", lang)} p={p}>
       <ButtonRun>
-        {actionButton(copied ? "check" : "content_copy", copied ? t("copied", lang) : t("prompt", lang), async () => {
-          try {
-            await navigator.clipboard.writeText(model.export.prompt);
-            setCopied(true);
-          } catch {}
-        })}
+        {actionButton("content_copy", t("prompt", lang), () => dispatch({ kind: "copy-prompt", prompt: model.export.prompt }))}
         {actionButton("image", saving ? t("saving", lang) : t("saveImage", lang), () => dispatch({ kind: "export-image" }), saving)}
       </ButtonRun>
       {model.export.image.kind === "error" && <div role="status" style={{ marginTop: 8, fontSize: 12, color: p.error }}>{model.export.image.message}</div>}
@@ -550,7 +545,7 @@ function AlignSection({ single, onAlign, p }: { single: boolean; onAlign: (kind:
 }
 
 
-function ItemHeader({ kind, p, dispatch }: { kind: Kind; p: Palette; dispatch: (command: ItemCommand) => void }) {
+function ItemHeader({ kind, p, dispatch }: { kind: Kind; p: Palette; dispatch: (command: ItemHeaderCommand) => void }) {
   const lang = useLang();
   const spec = KIND_SPEC[kind];
   return (
@@ -563,41 +558,23 @@ function ItemHeader({ kind, p, dispatch }: { kind: Kind; p: Palette; dispatch: (
   );
 }
 
-function ToggleAppearanceSection({ toggle, p, onTab, setOnTab, dispatch }: { toggle: ItemStyleModel["toggle"]; p: Palette; onTab: boolean; setOnTab: (on: boolean) => void; dispatch: (command: ItemCommand) => void }) {
+function ToggleAppearanceSection({ enabled, p, onEnabledChange }: { enabled: boolean; p: Palette; onEnabledChange: (enabled: boolean) => void }) {
   const lang = useLang();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "10px 4px 12px", marginBottom: 12 }}>
       <Toggle
-        on={!!toggle}
-        onChange={(on) => {
-          dispatch({ kind: "set-toggle", value: on ? {} : undefined });
-          setOnTab(on);
-        }}
+        on={enabled}
+        onChange={onEnabledChange}
         p={p}
         icon="swap_horiz"
         label={t("toggle", lang)}
         grow
       />
-      {toggle && (
-        <>
-          <Segmented<"off" | "on">
-            options={[
-              { key: "off", icon: "radio_button_unchecked", label: t("normalState", lang) },
-              { key: "on", icon: "check_circle", label: t("onState", lang) },
-            ]}
-            value={onTab ? "on" : "off"}
-            onChange={(value) => setOnTab(value === "on")}
-            p={p}
-            height={36}
-          />
-          {onTab && <div style={{ fontSize: 11, color: p.onSurfaceVariant, padding: "0 4px" }}>{t("onStateHint", lang)}</div>}
-        </>
-      )}
     </div>
   );
 }
 
-function ItemTextSection({ kind, model, displayLabel, p, editOn, change, dispatch, automaticTextColor }: { kind: Kind; model: ItemTextModel; displayLabel: string; p: Palette; editOn: boolean; change: (command: ItemCommand) => void; dispatch: (command: ItemCommand) => void; automaticTextColor: string }) {
+function ItemTextSection({ kind, model, p, dispatch, automaticTextColor }: { kind: Kind; model: ItemTextModel; p: Palette; dispatch: (command: ItemTextCommand) => void; automaticTextColor: string }) {
   const lang = useLang();
   const spec = KIND_SPEC[kind];
   return (
@@ -605,13 +582,13 @@ function ItemTextSection({ kind, model, displayLabel, p, editOn, change, dispatc
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {spec.hasLabel && (
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <Field value={displayLabel} onChange={(label) => change({ kind: "set-label", value: label })} placeholder={t("label", lang)} p={p} icon="short_text" />
+            <Field value={model.label} onChange={(label) => dispatch({ kind: "set-label", value: label })} placeholder={t("label", lang)} p={p} icon="short_text" />
             {kind === "text" && (
               <IconBtn icon="format_bold" p={p} size={44} on={model.bold} onClick={() => dispatch({ kind: "set-bold", value: !model.bold })} title={t("bold", lang)} />
             )}
           </div>
         )}
-        {spec.hasSupporting && !editOn && (
+        {spec.hasSupporting && (
           <Field
             value={model.supporting ?? ""}
             onChange={(supporting) => dispatch({ kind: "set-supporting", value: supporting })}
@@ -623,7 +600,7 @@ function ItemTextSection({ kind, model, displayLabel, p, editOn, change, dispatc
             grow={kind === "card"}
           />
         )}
-        {kind === "card" && !editOn && (
+        {kind === "card" && (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
               <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: p.onSurfaceVariant }}>{t("textPosition", lang)}</span>
@@ -649,10 +626,54 @@ function ItemTextSection({ kind, model, displayLabel, p, editOn, change, dispatc
   );
 }
 
-function TabsSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemTabsModel; p: Palette; dispatch: (command: ItemCommand) => void }) {
+function ToggleTextSection({ value, p, onChange }: { value: string; p: Palette; onChange: (value: string) => void }) {
   const lang = useLang();
-  const [slotKey, setSlotKey] = useState("tab:0");
-  const [pickerOpen, setPickerOpen] = useState(false);
+  return (
+    <Section id="toggle-text" icon="title" title={t("text", lang)} p={p}>
+      <Field value={value} onChange={onChange} placeholder={t("label", lang)} p={p} icon="short_text" />
+    </Section>
+  );
+}
+
+function ToggleIconSection({ value, p, onChange }: { value: string | null; p: Palette; onChange: (value: string | null) => void }) {
+  const lang = useLang();
+  return (
+    <Section id="toggle-icon" icon="emoji_symbols" title={t("icon", lang)} p={p}>
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <IconPickerDisclosure name="toggle-icon" value={value} label={t("changeIcon", lang)} palette={p} onChange={onChange} />
+        {value !== null && <IconBtn icon="close" p={p} size={44} onClick={() => onChange(null)} title={t("noIcon", lang)} />}
+      </div>
+    </Section>
+  );
+}
+
+function ToggleStyleSection({ kind, variant, p, onChange }: { kind: Kind; variant: Variant; p: Palette; onChange: (value: Variant) => void }) {
+  const lang = useLang();
+  const variants = KIND_SPEC[kind].hasVariant ? variantsOf(kind) : [];
+  if (!variants.length || kind === "card") return null;
+  return (
+    <Section id="toggle-style" icon="palette" title={t("style", lang)} p={p}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {variants.map((value) => <VariantSwatch key={value.key} v={value.key} label={value.label} p={p} on={variant === value.key} onClick={() => onChange(value.key)} />)}
+      </div>
+    </Section>
+  );
+}
+
+function ToggleStateSections({ kind, text, icons, toggle, normalVariant, p, dispatch }: { kind: Kind; text: ItemTextModel; icons: ItemIconModel | undefined; toggle: NonNullable<ItemStyleModel["toggle"]>; normalVariant: Variant; p: Palette; dispatch: (command: ToggleLookCommand) => void }) {
+  const icon = icons?.slots.find((slot) => slot.key === "icon")?.value ?? null;
+  const toggleIcon = toggle.icon !== undefined ? toggle.icon : icon;
+  return (
+    <>
+      {KIND_SPEC[kind].hasLabel && <ToggleTextSection value={toggle.label ?? text.label} p={p} onChange={(value) => dispatch({ kind: "set-label", value })} />}
+      {icons?.slots.some((slot) => slot.key === "icon") && <ToggleIconSection value={toggleIcon} p={p} onChange={(value) => dispatch({ kind: "set-icon", value })} />}
+      <ToggleStyleSection kind={kind} variant={toggle.variant ?? normalVariant} p={p} onChange={(value) => dispatch({ kind: "set-variant", value })} />
+    </>
+  );
+}
+
+function TabsSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemTabsModel; p: Palette; dispatch: (command: ItemTabsCommand) => void }) {
+  const lang = useLang();
   const tabs = model.tabs;
   const isSelect = kind === "select";
   const tabIcons = kind !== "tabs" && kind !== "select";
@@ -660,11 +681,6 @@ function TabsSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemTabs
   const growsFreely = isSelect || kind === "tabs";
   const hasSelected = kind === "bottomNav" || kind === "navRail" || kind === "tabs" || isSelect;
   const selectedTab = isSelect && model.selected === undefined ? -1 : Math.min(model.selected ?? 0, Math.max(0, tabs.length - 1));
-  useEffect(() => {
-    setSlotKey(tabs[0] ? "tab:0" : "");
-    setPickerOpen(false);
-  }, [kind, tabs.length]);
-
   const remapActions = (actions: Readonly<Record<string, Action>>, to: (index: number) => number | undefined) => {
     const next: Record<string, Action> = {};
     for (const [key, action] of Object.entries(actions)) {
@@ -694,7 +710,7 @@ function TabsSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemTabs
     setTabs(next, selected, remapActions(model.actions, (i) => i === index ? undefined : i > index ? i - 1 : i));
   };
   return (
-    <Section id="tabs" icon={isSelect ? "list" : "view_column"} title={t(isSelect ? "options" : "tabs", lang)} p={p} onToggle={(open) => { if (!open) setPickerOpen(false); }}>
+    <Section id="tabs" icon={isSelect ? "list" : "view_column"} title={t(isSelect ? "options" : "tabs", lang)} p={p}>
       {!growsFreely && (
         <Segmented
           options={(kind === "toolbar" ? [2, 3, 4, 5, 6] : [2, 3, 4, 5]).map((n) => ({ key: String(n), label: String(n) }))}
@@ -705,25 +721,16 @@ function TabsSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemTabs
         />
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10 }}>
-        {tabs.map((tab, index) => {
-          const selected = selectedTab === index;
-          const active = slotKey === "tab:" + index && pickerOpen;
+          {tabs.map((tab, index) => {
+            const selected = selectedTab === index;
+          const slotKey = "tab:" + index;
           return (
             <div key={index} style={{ display: "flex", gap: 6, alignItems: "center" }}>
               {hasSelected && (
                 <IconBtn icon={selected ? "radio_button_checked" : "radio_button_unchecked"} p={p} size={40} on={selected} onClick={() => setTabs(tabs, isSelect && selected ? undefined : index)} title={t(isSelect ? "selectedOption" : "selectedTab", lang)} />
               )}
               {tabIcons && (
-                <button
-                  onClick={() => { setSlotKey("tab:" + index); setPickerOpen(!active); }}
-                  title={t("changeIcon", lang)}
-                  aria-label={t("changeIcon", lang)}
-                  aria-expanded={active}
-                  className="m3-press"
-                  style={{ width: 40, height: 40, flex: "0 0 auto", borderRadius: 20, border: "none", background: active ? p.primary : p.surfaceContainerHigh, color: active ? p.onPrimary : p.onSurfaceVariant, cursor: "pointer", display: "grid", placeItems: "center" }}
-                >
-                  <Icon name={tab.icon || "add"} size={20} />
-                </button>
+                <IconPickerDisclosure name={`tabs-${kind}`} value={tab.icon || null} label={t("changeIcon", lang)} palette={p} size={40} onChange={(icon) => dispatch({ kind: "set-icon-slot", slot: slotKey, value: icon })} />
               )}
               {tabLabels && <Field value={tab.label} onChange={(label) => setTabs(tabs.map((current, j) => j === index ? { ...current, label } : current))} placeholder={t("label", lang)} p={p} height={40} />}
               {tabIcons && tab.icon && <IconBtn icon="close" p={p} size={40} onClick={() => dispatch({ kind: "set-icon-slot", slot: "tab:" + index, value: null })} title={t("noIcon", lang)} />}
@@ -738,19 +745,14 @@ function TabsSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemTabs
           {t(isSelect ? "addOption" : "addTab", lang)}
         </button>
       )}
-      {slotKey && pickerOpen && tabs[Number(slotKey.slice(4))] && (
-        <div style={{ margin: "8px 0 0" }}>
-          <IconPicker value={tabs[Number(slotKey.slice(4))].icon || null} onChange={(icon) => dispatch({ kind: "set-icon-slot", slot: slotKey, value: icon })} onClose={() => setPickerOpen(false)} palette={p} />
-        </div>
-      )}
       {hasSelected && !isSelect && <div style={{ fontSize: 12, lineHeight: 1.5, color: p.onSurfaceVariant, padding: "8px 6px 0" }}>{t("selectedHint", lang)}</div>}
     </Section>
   );
 }
 
-function MediaSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemMediaModel; p: Palette; dispatch: (command: ItemCommand) => void }) {
+function MediaSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemMediaModel; p: Palette; dispatch: (command: ItemMediaCommand) => void }) {
   const lang = useLang();
-  const fileRef = useRef<HTMLInputElement>(null);
+  const uploadId = `inspector-image-${kind}`;
   return (
     <Section id="image" icon="image" title={t("image", lang)} p={p}>
       {kind === "card" && (
@@ -762,7 +764,7 @@ function MediaSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemMed
         </div>
       )}
       <input
-        ref={fileRef}
+        id={uploadId}
         type="file"
         accept="image/*"
         hidden
@@ -778,14 +780,14 @@ function MediaSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemMed
       {(!model.noImage || model.src) && (
         <>
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <button onClick={() => fileRef.current?.click()} className="m3-press" style={{ flex: 1, height: 44, borderRadius: 22, border: "none", background: p.primary, color: p.onPrimary, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <label htmlFor={uploadId} className="m3-press" style={{ flex: 1, height: 44, borderRadius: 22, border: "none", background: p.primary, color: p.onPrimary, fontSize: 13, fontWeight: 600, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
               <Icon name="upload" size={20} />
               {t("pickImage", lang)}
-            </button>
+            </label>
             {model.src && <IconBtn icon="close" p={p} size={44} onClick={() => dispatch({ kind: "set-image-source", value: undefined })} title={t("removeImage", lang)} />}
           </div>
           <div style={{ marginTop: 8 }}>
-            <UrlField value={model.src && /^https?:\/\//.test(model.src) ? model.src : ""} onChange={(src) => dispatch({ kind: "set-image-source", value: src })} placeholder={t("imageUrl", lang)} p={p} />
+            <UrlField key={model.src?.startsWith("http") ? model.src : model.src ? "local-image" : "empty"} value={model.src && /^https?:\/\//.test(model.src) ? model.src : ""} onChange={(src) => dispatch({ kind: "set-image-source", value: src })} placeholder={t("imageUrl", lang)} p={p} />
           </div>
         </>
       )}
@@ -793,67 +795,49 @@ function MediaSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemMed
   );
 }
 
-function IconSection({ kind, model, style, navigation, p, editOn, change, dispatch }: { kind: Kind; model: ItemIconModel; style: ItemStyleModel; navigation?: ItemNavigationModel; p: Palette; editOn: boolean; change: (command: ItemCommand) => void; dispatch: (command: ItemCommand) => void }) {
+function IconSection({ model, navigation, p, dispatch }: { model: ItemIconModel; navigation?: ItemNavigationModel; p: Palette; dispatch: (command: ItemIconCommand) => void }) {
   const lang = useLang();
   const slots = model.slots.filter((slot) => !slot.key.startsWith("tab:"));
-  const [slotKey, setSlotKey] = useState(slots[0]?.key ?? "icon");
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const normalIcon = slots.find((slot) => slot.key === "icon")?.value ?? null;
-  const activeSlot = slots.find((slot) => slot.key === slotKey) ?? slots[0];
-  const visibleSlot = activeSlot && editOn && activeSlot.key === "icon" ? { ...activeSlot, value: style.toggle?.icon ?? normalIcon } : activeSlot;
-  useEffect(() => {
-    setSlotKey(slots[0]?.key ?? "icon");
-    setPickerOpen(false);
-  }, [editOn, kind, slots.map((slot) => slot.key).join("|")]);
-  if (!activeSlot) return null;
+  if (!slots.length) return null;
   return (
-    <Section id="icon" icon="emoji_symbols" title={t("icon", lang)} p={p} onToggle={(open) => { if (!open) setPickerOpen(false); }}>
+    <Section id="icon" icon="emoji_symbols" title={t("icon", lang)} p={p}>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {slots.map((slot) => {
-          const active = slot.key === activeSlot.key && pickerOpen;
-          return (
-            <button key={slot.key} onClick={() => { setSlotKey(slot.key); setPickerOpen(!active); }} title={slot.label} className="m3-press" style={{ height: 44, minWidth: 44, padding: slots.length > 1 ? "0 14px 0 10px" : 0, borderRadius: 22, border: "none", background: active ? p.primary : p.surfaceContainerHigh, color: active ? p.onPrimary : slot.value ? p.onSurface : p.outline, cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 12, fontWeight: 600 }}>
-              <Icon name={(editOn && slot.key === "icon" ? visibleSlot.value : slot.value) ?? "block"} size={22} />
-              {slots.length > 1 && <span>{slot.label}</span>}
-            </button>
-          );
-        })}
-        {visibleSlot.value && (
-          <IconBtn
-            icon="close"
-            p={p}
-            size={44}
-            onClick={() => {
-              if (!editOn && navigation?.slots.find((slot) => slot.key === visibleSlot.key)?.action) dispatch({ kind: "set-action", slot: visibleSlot.key, value: undefined });
-              change({ kind: "set-icon-slot", slot: visibleSlot.key, value: null });
-            }}
-            title={t("noIcon", lang)}
-          />
-        )}
+        {slots.map((slot) => (
+          <div key={slot.key} style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+            <IconPickerDisclosure name="item-icons" value={slot.value} label={slot.label} palette={p} showLabel={slots.length > 1} onChange={(icon) => dispatch({ kind: "set-icon-slot", slot: slot.key, value: icon })} />
+            {slot.value && (
+              <IconBtn
+                icon="close"
+                p={p}
+                size={44}
+                onClick={() => {
+                  if (navigation?.slots.find((candidate) => candidate.key === slot.key)?.action) dispatch({ kind: "set-action", slot: slot.key, value: undefined });
+                  dispatch({ kind: "set-icon-slot", slot: slot.key, value: null });
+                }}
+                title={t("noIcon", lang)}
+              />
+            )}
+          </div>
+        ))}
       </div>
-      {pickerOpen && (
-        <div style={{ margin: "-4px 4px 12px" }}>
-          <IconPicker value={visibleSlot.value} onChange={(icon) => change({ kind: "set-icon-slot", slot: visibleSlot.key, value: icon })} onClose={() => setPickerOpen(false)} palette={p} />
-        </div>
-      )}
     </Section>
   );
 }
 
-function StyleSection({ kind, p, variant, change }: { kind: Kind; p: Palette; variant: Variant; change: (command: ItemCommand) => void }) {
+function StyleSection({ kind, p, variant, dispatch }: { kind: Kind; p: Palette; variant: Variant; dispatch: (command: ItemStyleCommand) => void }) {
   const lang = useLang();
   const variants = KIND_SPEC[kind].hasVariant ? variantsOf(kind) : [];
   if (!variants.length || kind === "card") return null;
   return (
     <Section id="style" icon="palette" title={t("style", lang)} p={p}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        {variants.map((value) => <VariantSwatch key={value.key} v={value.key} label={value.label} p={p} on={variant === value.key} onClick={() => change({ kind: "set-variant", value: value.key })} />)}
+        {variants.map((value) => <VariantSwatch key={value.key} v={value.key} label={value.label} p={p} on={variant === value.key} onClick={() => dispatch({ kind: "set-variant", value: value.key })} />)}
       </div>
     </Section>
   );
 }
 
-function FillSection({ kind, p, style, dispatch }: { kind: Kind; p: Palette; style: ItemStyleModel; dispatch: (command: ItemCommand) => void }) {
+function FillSection({ kind, p, style, dispatch }: { kind: Kind; p: Palette; style: ItemStyleModel; dispatch: (command: ItemFillCommand) => void }) {
   const lang = useLang();
   const spec = KIND_SPEC[kind];
   if (!spec.hasFill) return null;
@@ -871,7 +855,7 @@ function FillSection({ kind, p, style, dispatch }: { kind: Kind; p: Palette; sty
   );
 }
 
-function StateSection({ kind, p, state, dispatch }: { kind: Kind; p: Palette; state: ItemStateModel; dispatch: (command: ItemCommand) => void }) {
+function StateSection({ kind, p, state, dispatch }: { kind: Kind; p: Palette; state: ItemStateModel; dispatch: (command: ItemStateCommand) => void }) {
   const lang = useLang();
   const spec = KIND_SPEC[kind];
   if (!(spec.hasChecked || spec.hasValue || spec.hasWavy || spec.hasContained || kind === "listItem")) return null;
@@ -891,7 +875,7 @@ function StateSection({ kind, p, state, dispatch }: { kind: Kind; p: Palette; st
   );
 }
 
-function RailSection({ model, p, dispatch }: { model: ItemRailModel; p: Palette; dispatch: (command: ItemCommand) => void }) {
+function RailSection({ model, p, dispatch }: { model: ItemRailModel; p: Palette; dispatch: (command: ItemRailCommand) => void }) {
   const lang = useLang();
   return (
     <Section id="rail" icon="side_navigation" title={t("railState", lang)} p={p}>
@@ -920,7 +904,7 @@ function RailSection({ model, p, dispatch }: { model: ItemRailModel; p: Palette;
   );
 }
 
-function GeometrySection({ kind, model, state, frameSize, p, dispatch }: { kind: Kind; model: ItemGeometryModel; state: ItemStateModel; frameSize: { w: number; h: number }; p: Palette; dispatch: (command: ItemCommand) => void }) {
+function GeometrySection({ kind, model, state, frameSize, p, dispatch }: { kind: Kind; model: ItemGeometryModel; state: ItemStateModel; frameSize: { w: number; h: number }; p: Palette; dispatch: (command: ItemGeometryCommand) => void }) {
   const lang = useLang();
   const spec = KIND_SPEC[kind];
   const hasRadius = kind === "bottomNav" || kind === "navRail" || kind === "topAppBar" || kind === "card" || kind === "image" || kind === "camera" || kind === "map" || kind === "box";
@@ -975,35 +959,42 @@ function GeometrySection({ kind, model, state, frameSize, p, dispatch }: { kind:
   );
 }
 
-function NavigationSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemNavigationModel; p: Palette; dispatch: (command: ItemCommand) => void }) {
+function NavigationSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemNavigationModel; p: Palette; dispatch: (command: ItemNavigationCommand) => void }) {
   const lang = useLang();
-  const [actionSlot, setActionSlot] = useState("");
   const slots = model.slots;
-  const activeKey = actionSlot || slots[0]?.key;
-  const active = slots.find((slot) => slot.key === activeKey);
   if (!slots.length || !model.targets.length) return null;
+  const summaryStyle = kind === "tabs"
+    ? { height: 32, padding: "0 12px", borderRadius: 8, maxWidth: "100%", cursor: "pointer", fontSize: 13, fontWeight: 600, border: "1px solid " + p.outline, color: p.onSurfaceVariant, display: "flex", alignItems: "center", gap: 6, listStyle: "none" as const }
+    : { height: 40, padding: "0 14px", cursor: "pointer", fontSize: 13, fontWeight: 600, color: p.onSurfaceVariant, display: "flex", alignItems: "center", gap: 8, listStyle: "none" as const };
   return (
     <Section id="action" icon="ads_click" title={t("tapTo", lang)} p={p}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {slots.length > 1 && (
-          kind === "tabs" ? (
-            <div role="radiogroup" aria-label={t("tapTo", lang)} style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-              {slots.map((slot) => {
-                const selected = slot.key === activeKey;
-                return <button key={slot.key} onClick={() => setActionSlot(slot.key)} title={slot.label} role="radio" aria-checked={selected} className="m3-press" style={{ height: 32, padding: "0 12px", borderRadius: 8, maxWidth: "100%", cursor: "pointer", fontSize: 13, fontWeight: 600, border: "1px solid " + (selected ? "transparent" : p.outline), background: selected ? p.primary : "transparent", color: selected ? p.onPrimary : p.onSurfaceVariant, display: "inline-flex", alignItems: "center", gap: 6 }}>{slot.action && <Icon name="ads_click" size={16} />}<span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{slot.label}</span></button>;
-              })}
-            </div>
-          ) : (
-            <Segmented<string> options={slots.map((slot) => ({ key: slot.key, icon: slot.icon ?? undefined, label: slot.icon ? undefined : slot.label, title: slot.label, dot: !!slot.action }))} value={activeKey} onChange={setActionSlot} p={p} height={40} />
-          )
+        {slots.length === 1 ? (
+          <ActionEditor frames={model.targets} action={slots[0].action ?? undefined} onChange={(value) => dispatch({ kind: "set-action", slot: slots[0].key === "default" ? null : slots[0].key, value })} p={p} />
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {slots.map((slot) => (
+              <details key={slot.key} style={{ borderRadius: 12, background: p.surfaceContainerHigh, overflow: "hidden" }}>
+                <summary title={slot.label} style={summaryStyle}>
+                  {kind === "tabs" && slot.action && <Icon name="ads_click" size={16} />}
+                  {kind !== "tabs" && slot.icon && <Icon name={slot.icon} size={18} />}
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{slot.label}</span>
+                  {slot.action && kind !== "tabs" && <span style={{ width: 7, height: 7, borderRadius: 4, background: p.primary }} />}
+                  <Icon name="expand_more" size={18} />
+                </summary>
+                <div style={{ padding: "0 10px 10px" }}>
+                  <ActionEditor frames={model.targets} action={slot.action ?? undefined} onChange={(value) => dispatch({ kind: "set-action", slot: slot.key === "default" ? null : slot.key, value })} p={p} />
+                </div>
+              </details>
+            ))}
+          </div>
         )}
-        {active && <ActionEditor frames={model.targets} action={active.action ?? undefined} onChange={(value) => dispatch({ kind: "set-action", slot: active.key === "default" ? null : active.key, value })} p={p} />}
       </div>
     </Section>
   );
 }
 
-function BehaviorSection({ kind, model, ai, p, dispatch }: { kind: Kind; model: ItemBehaviorModel; ai: AiCapability; p: Palette; dispatch: (command: ItemCommand) => void }) {
+function BehaviorSection({ kind, model, ai, p, dispatch }: { kind: Kind; model: ItemBehaviorModel; ai: AiCapability; p: Palette; dispatch: (command: ItemBehaviorCommand) => void }) {
   const lang = useLang();
   return (
     <Section id="note" icon="bolt" title={t("behavior", lang)} p={p}>
@@ -1020,58 +1011,119 @@ function BehaviorSection({ kind, model, ai, p, dispatch }: { kind: Kind; model: 
   );
 }
 
-export function ItemInspector({ model, palette: p, dispatch }: { model: ItemInspectorModel; palette: Palette; dispatch: (command: ItemCommand) => void }) {
-  const lang = useLang();
+function NormalContentSections({ model, p, dispatch }: { model: ItemInspectorModel; p: Palette; dispatch: (command: ItemCommand) => void }) {
   const spec = KIND_SPEC[model.kind];
-  const text = model.sections.text;
-  const tabs = model.sections.tabs;
-  const media = model.sections.media;
-  const icons = model.sections.icons;
-  const style = model.sections.style;
-  const state = model.sections.state;
-  const rail = model.sections.rail;
-  const geometry = model.sections.geometry;
-  const navigation = model.sections.navigation;
-  const behavior = model.sections.behavior;
-  const [onTab, setOnTab] = useState(false);
-  useEffect(() => {
-    setOnTab(false);
-  }, [model.id, model.kind, tabs?.tabs.length]);
-  const editOn = !!style.toggle && onTab;
-  const change = (command: ItemCommand) => {
-    if (!editOn) {
-      dispatch(command);
-      return;
-    }
-    const next = { ...(style.toggle ?? {}) };
-    if (command.kind === "set-label") next.label = command.value;
-    else if (command.kind === "set-icon-slot" && command.slot === "icon") next.icon = command.value;
-    else if (command.kind === "set-variant") next.variant = command.value;
-    else return;
-    dispatch({ kind: "set-toggle", value: next });
-  };
-  const frameSize = model.frame ? { w: model.frame.width, h: model.frame.height } : { w: PHONE_W, h: PHONE_H };
-  const displayLabel = editOn ? style.toggle?.label ?? text.label : text.label;
-  const displayVariant = editOn ? style.toggle?.variant ?? style.variant : style.variant;
+  const { text, tabs, media, icons, style, navigation } = model.sections;
   const automaticTextColor = model.kind === "card" && media && !media.noImage && media.imagePos === "background" ? (media.src ? "#ffffff" : p.onPrimaryContainer) : style.fill ? onToken(style.fill, p) : p.onSurface;
+  return (
+    <>
+      {(spec.hasLabel || spec.hasSupporting) && <ItemTextSection kind={model.kind} model={text} p={p} dispatch={dispatch} automaticTextColor={automaticTextColor} />}
+      {spec.hasTabs && tabs && <TabsSection key={`${model.id}:${tabs.tabs.length}`} kind={model.kind} model={tabs} p={p} dispatch={dispatch} />}
+      {media && <MediaSection kind={model.kind} model={media} p={p} dispatch={dispatch} />}
+      {icons && !media?.src && <IconSection key={`${model.id}:${icons.slots.map((slot) => slot.key).join("|")}`} model={icons} navigation={navigation} p={p} dispatch={dispatch} />}
+    </>
+  );
+}
+
+function NormalAppearanceSections({ model, p, dispatch }: { model: ItemInspectorModel; p: Palette; dispatch: (command: ItemCommand) => void }) {
+  const { style, state, rail, geometry } = model.sections;
+  const frameSize = model.frame ? { w: model.frame.width, h: model.frame.height } : { w: PHONE_W, h: PHONE_H };
+  return (
+    <>
+      <StyleSection kind={model.kind} p={p} variant={style.variant} dispatch={dispatch} />
+      <FillSection kind={model.kind} p={p} style={style} dispatch={dispatch} />
+      <StateSection kind={model.kind} p={p} state={state} dispatch={dispatch} />
+      {rail && <RailSection model={rail} p={p} dispatch={dispatch} />}
+      <GeometrySection kind={model.kind} model={geometry} state={state} frameSize={frameSize} p={p} dispatch={dispatch} />
+    </>
+  );
+}
+
+function NormalInteractionSections({ model, p, dispatch }: { model: ItemInspectorModel; p: Palette; dispatch: (command: ItemCommand) => void }) {
+  const { navigation, behavior } = model.sections;
+  return (
+    <>
+      {navigation && <NavigationSection kind={model.kind} model={navigation} p={p} dispatch={dispatch} />}
+      <BehaviorSection kind={model.kind} model={behavior} ai={model.ai} p={p} dispatch={dispatch} />
+    </>
+  );
+}
+
+function NormalItemSections({ model, p, dispatch }: { model: ItemInspectorModel; p: Palette; dispatch: (command: ItemCommand) => void }) {
+  return (
+    <>
+      <AlignSection single onAlign={(value) => dispatch({ kind: "align", value })} p={p} />
+      <NormalContentSections model={model} p={p} dispatch={dispatch} />
+      <NormalAppearanceSections model={model} p={p} dispatch={dispatch} />
+      <NormalInteractionSections model={model} p={p} dispatch={dispatch} />
+    </>
+  );
+}
+
+function ToggleItemSections({ model, p, dispatch }: { model: ItemInspectorModel; p: Palette; dispatch: (command: ToggleLookCommand) => void }) {
+  const { text, icons, media, style } = model.sections;
+  if (!style.toggle) return null;
+  return <ToggleStateSections kind={model.kind} text={text} icons={media?.src ? undefined : icons} toggle={style.toggle} normalVariant={style.variant} p={p} dispatch={dispatch} />;
+}
+
+function ToggleStatePanels({ model, p, dispatch }: { model: ItemInspectorModel; p: Palette; dispatch: (command: ItemCommand) => void }) {
+  const lang = useLang();
+  const style = model.sections.style;
+  if (!style.toggle) return null;
+  const toggleDispatch = (command: ToggleLookCommand) => dispatch({ kind: "set-toggle", value: applyToggleLookCommand(style.toggle, command) });
+  const closeOtherPanel = (event: React.SyntheticEvent<HTMLDetailsElement>) => {
+    if (!event.currentTarget.open) return;
+    event.currentTarget.parentElement?.querySelectorAll<HTMLDetailsElement>("details[data-toggle-state]").forEach((panel) => {
+      if (panel !== event.currentTarget) panel.open = false;
+    });
+  };
+  const summaryStyle = { display: "flex", alignItems: "center", gap: 8, minHeight: 40, padding: "0 12px", cursor: "pointer", listStyle: "none", color: p.onSurfaceVariant, fontSize: 13, fontWeight: 600 } as const;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <details data-toggle-state={model.id} onToggle={closeOtherPanel} style={{ borderRadius: 16, background: p.surfaceContainerHigh, overflow: "hidden" }}>
+        <summary style={summaryStyle}>
+          <Icon name="radio_button_unchecked" size={18} />
+          <span style={{ flex: 1 }}>{t("normalState", lang)}</span>
+          <Icon name="expand_more" size={18} />
+        </summary>
+        <div style={{ padding: "0 10px 10px" }}>
+          <NormalItemSections model={model} p={p} dispatch={dispatch} />
+        </div>
+      </details>
+      <details data-toggle-state={model.id} open onToggle={closeOtherPanel} style={{ borderRadius: 16, background: p.surfaceContainerHigh, overflow: "hidden" }}>
+        <summary style={summaryStyle}>
+          <Icon name="check_circle" size={18} />
+          <span style={{ flex: 1 }}>{t("onState", lang)}</span>
+          <Icon name="expand_more" size={18} />
+        </summary>
+        <div style={{ padding: "0 10px 10px" }}>
+          <div style={{ fontSize: 11, color: p.onSurfaceVariant, padding: "4px 4px 10px" }}>{t("onStateHint", lang)}</div>
+          <ToggleItemSections model={model} p={p} dispatch={toggleDispatch} />
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function ItemInspectorBody({ model, palette: p, dispatch }: { model: ItemInspectorModel; palette: Palette; dispatch: (command: ItemCommand) => void }) {
+  const style = model.sections.style;
+  const toggleEnabled = style.toggle !== undefined;
+
+  const setToggleEnabled = (enabled: boolean) => {
+    dispatch({ kind: "set-toggle", value: enabled ? {} : undefined });
+  };
+
   return (
     <div className="no-scrollbar" style={{ padding: "12px 12px 20px", overflowY: "auto", height: "100%" }}>
       <ItemHeader kind={model.kind} p={p} dispatch={dispatch} />
-      {TOGGLEABLE.includes(model.kind) && <ToggleAppearanceSection toggle={style.toggle} p={p} onTab={onTab} setOnTab={setOnTab} dispatch={dispatch} />}
-      {!editOn && <AlignSection single onAlign={(value) => dispatch({ kind: "align", value })} p={p} />}
-      {(spec.hasLabel || spec.hasSupporting) && <ItemTextSection kind={model.kind} model={text} displayLabel={displayLabel} p={p} editOn={editOn} change={change} dispatch={dispatch} automaticTextColor={automaticTextColor} />}
-      {spec.hasTabs && tabs && !editOn && <TabsSection kind={model.kind} model={tabs} p={p} dispatch={dispatch} />}
-      {media && !editOn && <MediaSection kind={model.kind} model={media} p={p} dispatch={dispatch} />}
-      {icons && !media?.src && <IconSection kind={model.kind} model={icons} style={style} navigation={navigation} p={p} editOn={editOn} change={change} dispatch={dispatch} />}
-      <StyleSection kind={model.kind} p={p} variant={displayVariant} change={change} />
-      {!editOn && <FillSection kind={model.kind} p={p} style={style} dispatch={dispatch} />}
-      {!editOn && <StateSection kind={model.kind} p={p} state={state} dispatch={dispatch} />}
-      {rail && !editOn && <RailSection model={rail} p={p} dispatch={dispatch} />}
-      {!editOn && <GeometrySection kind={model.kind} model={geometry} state={state} frameSize={frameSize} p={p} dispatch={dispatch} />}
-      {navigation && !editOn && <NavigationSection kind={model.kind} model={navigation} p={p} dispatch={dispatch} />}
-      {!editOn && <BehaviorSection kind={model.kind} model={behavior} ai={model.ai} p={p} dispatch={dispatch} />}
+      {TOGGLEABLE.includes(model.kind) && <ToggleAppearanceSection enabled={toggleEnabled} p={p} onEnabledChange={setToggleEnabled} />}
+      {toggleEnabled ? <ToggleStatePanels model={model} p={p} dispatch={dispatch} /> : <NormalItemSections model={model} p={p} dispatch={dispatch} />}
     </div>
   );
+}
+
+export function ItemInspector({ model, palette: p, dispatch }: { model: ItemInspectorModel; palette: Palette; dispatch: (command: ItemCommand) => void }) {
+  return <ItemInspectorBody key={model.id} model={model} palette={p} dispatch={dispatch} />;
 }
 
 function EmptyInspector({ p }: { p: Palette }) {

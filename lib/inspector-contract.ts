@@ -244,6 +244,37 @@ export type ItemCommand =
   | { kind: "delete" }
   | { kind: "duplicate" };
 
+/** Commands exposed to each Inspector section stay narrower than the editor command union. */
+export type ItemHeaderCommand = Extract<ItemCommand, { kind: "delete" | "duplicate" }>;
+export type ItemTextCommand = Extract<ItemCommand, { kind: "set-label" | "set-supporting" | "set-bold" | "set-content-align" | "set-text-color" }>;
+export type ItemTabsCommand = Extract<ItemCommand, { kind: "set-tabs" | "set-icon-slot" }>;
+export type ItemMediaCommand = Extract<ItemCommand, { kind: "set-card-layout" | "set-image-size" | "set-image-source" }>;
+export type ItemIconCommand = Extract<ItemCommand, { kind: "set-icon-slot" | "set-action" }>;
+export type ItemStyleCommand = Extract<ItemCommand, { kind: "set-variant" }>;
+export type ItemFillCommand = Extract<ItemCommand, { kind: "set-fill" | "set-icon-fill" }>;
+export type ItemStateCommand = Extract<ItemCommand, { kind: "set-checked" | "set-switch" | "set-no-check" | "set-contained" | "set-wavy" | "set-value" }>;
+export type ItemRailCommand = Extract<ItemCommand, { kind: "set-rail" }>;
+export type ItemGeometryCommand = Extract<ItemCommand, { kind: "set-track-thickness" | "set-size" | "set-size2" | "set-radius" | "set-corners" }>;
+export type ItemNavigationCommand = Extract<ItemCommand, { kind: "set-action" }>;
+export type ItemBehaviorCommand = Extract<ItemCommand, { kind: "set-note" | "restore-note" }>;
+
+/** The toggle editor has its own contract; these commands never mean normal-state edits. */
+export type ToggleLookCommand =
+  | { kind: "set-label"; value: string }
+  | { kind: "set-icon"; value: string | null }
+  | { kind: "set-variant"; value: Variant };
+
+export function applyToggleLookCommand(current: ToggleLook | undefined, command: ToggleLookCommand): ToggleLook {
+  switch (command.kind) {
+    case "set-label":
+      return { ...(current ?? {}), label: command.value };
+    case "set-icon":
+      return { ...(current ?? {}), icon: command.value };
+    case "set-variant":
+      return { ...(current ?? {}), variant: command.value };
+  }
+}
+
 export type FrameCommand =
   | { kind: "set-name"; value: string }
   | { kind: "set-note"; value: string | undefined }
@@ -256,6 +287,7 @@ export type FrameCommand =
   | { kind: "delete" }
   | { kind: "duplicate" }
   | { kind: "preview" }
+  | { kind: "copy-prompt"; prompt: string }
   | { kind: "export-image" };
 
 export type SelectionCommand =

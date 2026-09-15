@@ -3108,6 +3108,13 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
             case "preview":
               openPreview(command.id);
               return;
+            case "copy-prompt": {
+              try {
+                const copy = navigator.clipboard?.writeText(command.command.prompt);
+                if (copy) void copy.then(() => showToast(t("copied", lang), 1400, "check")).catch(() => {});
+              } catch {}
+              return;
+            }
             case "export-image":
               void saveFrameImage(current);
               return;
@@ -3132,6 +3139,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
       selected,
       setFramePreset,
       setPlace,
+      showToast,
       tidy,
       ungroupSelected,
     ],
@@ -4186,6 +4194,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
             {isMobile && sheet === "edit" && inspectorSurface.kind === "item" && (
               <BottomSheet key="edit" p={p} onClose={() => setSheet(null)}>
                 <MobileInspector
+                  key={inspectorSurface.model.id}
                   model={inspectorSurface.model}
                   palette={p}
                   dispatch={(command) => {

@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { motion, useDragControls } from "motion/react";
+import { LazyMotion, domMax, m, useDragControls } from "motion/react";
 import { CONTRASTS, Contrast, FONTS, KIND_SPEC, NavTab, PALETTES, Palette, SHAPES, ShapeScale, Theme, defaultTabsFor } from "@/lib/tokens";
 import { ensureFontLoaded } from "@/lib/theme";
 import { KIND_TEXT, LANGS, Lang, t, useLang } from "@/lib/i18n";
-import { IconPicker } from "./IconPicker";
+import { IconPickerDisclosure } from "./IconPickerDisclosure";
 import { Icon } from "./M3Node";
-import { VariantSwatch, variantsOf } from "./Inspector";
+import { VariantSwatch } from "./Inspector";
 import { Field, IconBtn, Segmented, Toggle } from "./ui";
+import { variantsOf } from "@/lib/inspector-view";
 import type { ItemCommand, ItemInspectorModel } from "@/lib/inspector-contract";
 
 /** Sheet that slides up from the bottom edge; the canvas above stays usable.
@@ -17,7 +17,8 @@ export function BottomSheet({ p, onClose, children }: { p: Palette; onClose: () 
   const lang = useLang();
   const controls = useDragControls();
   return (
-    <motion.div
+    <LazyMotion features={domMax}>
+    <m.div
       initial={{ y: "100%" }}
       animate={{ y: 0 }}
       exit={{ y: "100%" }}
@@ -67,7 +68,8 @@ export function BottomSheet({ p, onClose, children }: { p: Palette; onClose: () 
       <div className="no-scrollbar" style={{ overflowY: "auto", padding: "0 14px 16px", minHeight: 0 }}>
         {children}
       </div>
-    </motion.div>
+    </m.div>
+    </LazyMotion>
   );
 }
 
@@ -114,18 +116,8 @@ export function MobileInspector({
   const state = model.sections.state;
   const behavior = model.sections.behavior;
   const slots = model.sections.icons?.slots.filter((s) => !s.key.startsWith("tab:")) ?? [];
-  const slotSignature = slots.map((slot) => slot.key).join("|");
-  const [slotKey, setSlotKey] = useState(slots[0]?.key ?? "icon");
-  const [pickerOpen, setPickerOpen] = useState(false);
-  useEffect(() => {
-    setSlotKey(model.sections.icons?.slots[0]?.key ?? "icon");
-    setPickerOpen(false);
-    setTabSlot(null);
-  }, [model.id, model.kind, tabsModel?.tabs.length, slotSignature]);
-  const activeSlot = slots.find((s) => s.key === slotKey) ?? slots[0];
   const variants = spec.hasVariant ? variantsOf(model.kind) : [];
   const tabs: readonly NavTab[] = tabsModel?.tabs ?? [];
-  const [tabSlot, setTabSlot] = useState<number | null>(null);
   const setTabCount = (n: number) => {
     const defaults = defaultTabsFor(model.kind);
     const next: NavTab[] = [];
@@ -195,7 +187,7 @@ export function MobileInspector({
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
             {tabs.map((tab, i) => (
-              <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <div key={`tab:${i}`} style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 {isSelect && (
                   <IconBtn
                     icon={tabsModel.selected === i ? "radio_button_checked" : "radio_button_unchecked"}
@@ -207,7 +199,7 @@ export function MobileInspector({
                   />
                 )}
                 {model.kind !== "tabs" && !isSelect && (
-                  <IconBtn icon={tab.icon || "add"} p={p} size={48} on={tabSlot === i} onClick={() => { setTabSlot(tabSlot === i ? null : i); setPickerOpen(false); }} title={t("changeIcon", lang)} />
+                  <IconPickerDisclosure name={`mobile-tabs-${model.id}`} value={tab.icon || null} label={t("changeIcon", lang)} palette={p} size={48} onChange={(icon) => dispatch({ kind: "set-icon-slot", slot: `tab:${i}`, value: icon })} />
                 )}
                 {model.kind !== "toolbar" && (
                   <Field value={tab.label} onChange={(label) => dispatch({ kind: "set-tabs", tabs: tabs.map((x, j) => (j === i ? { ...x, label } : x)), selected: tabsModel.selected, actions: tabsModel.actions })} placeholder={t("label", lang)} p={p} height={48} />
@@ -234,80 +226,19 @@ export function MobileInspector({
               {t("addOption", lang)}
             </button>
           )}
-          {tabSlot !== null && tabs[tabSlot] && (
-            <div style={{ marginTop: 8 }}>
-              <IconPicker value={tabs[tabSlot].icon || null} onChange={(icon) => dispatch({ kind: "set-icon-slot", slot: `tab:${tabSlot}`, value: icon })} onClose={() => setTabSlot(null)} palette={p} />
-            </div>
-          )}
         </Row>
       )}
 
-      {slots.length > 0 && activeSlot && (
+      {slots.length > 0 && (
         <Row icon="emoji_symbols" label={t("icon", lang)} p={p}>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-            {slots.map((s) => {
-              const on = s.key === activeSlot.key && pickerOpen;
-              return (
-                <button
-                  key={s.key}
-                  onClick={() => {
-                    setTabSlot(null);
-                    setSlotKey(s.key);
-                    setPickerOpen(!(on && pickerOpen));
-                  }}
-                  title={s.label}
-                  className="m3-press"
-                  style={{
-                    height: 48,
-                    minWidth: 48,
-                    padding: slots.length > 1 ? "0 14px 0 10px" : 0,
-                    borderRadius: 24,
-                    border: "none",
-                    background: on ? p.primary : p.surfaceContainerHigh,
-                    color: on ? p.onPrimary : s.value ? p.onSurface : p.outline,
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                    fontSize: 13,
-                    fontWeight: 600,
-                  }}
-                >
-                  <Icon name={s.value ?? "block"} size={24} />
-                  {slots.length > 1 && <span>{s.label}</span>}
-                </button>
-              );
-            })}
-            {activeSlot.value && (
-              <button
-                onClick={() => dispatch({ kind: "set-icon-slot", slot: activeSlot.key, value: null })}
-                className="m3-press"
-                style={{
-                  height: 48,
-                  padding: "0 14px 0 10px",
-                  borderRadius: 24,
-                  border: `1px solid ${p.outline}`,
-                  background: "transparent",
-                  color: p.onSurfaceVariant,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: 13,
-                  fontWeight: 600,
-                }}
-              >
-                <Icon name="close" size={20} />
-                {t("noIcon", lang)}
-              </button>
-            )}
+            {slots.map((slot) => (
+              <div key={slot.key} style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
+                <IconPickerDisclosure name={`mobile-icons-${model.id}`} value={slot.value} label={slot.label} palette={p} size={48} showLabel={slots.length > 1} onChange={(icon) => dispatch({ kind: "set-icon-slot", slot: slot.key, value: icon })} />
+                {slot.value && <IconBtn icon="close" p={p} size={48} onClick={() => dispatch({ kind: "set-icon-slot", slot: slot.key, value: null })} title={t("noIcon", lang)} />}
+              </div>
+            ))}
           </div>
-          {pickerOpen && (
-            <div style={{ marginTop: 8 }}>
-              <IconPicker value={activeSlot.value} onChange={(icon) => dispatch({ kind: "set-icon-slot", slot: activeSlot.key, value: icon })} onClose={() => setPickerOpen(false)} palette={p} />
-            </div>
-          )}
         </Row>
       )}
 

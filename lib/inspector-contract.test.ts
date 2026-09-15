@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { frameSizeOf, makeItem, type Frame, type Group } from "./tokens";
-import { selectInspectorSurface, type SelectInspectorSurfaceInput } from "./inspector-contract";
+import { applyToggleLookCommand, selectInspectorSurface, type SelectInspectorSurfaceInput } from "./inspector-contract";
 
 const home: Frame = { id: "home", name: "Home", x: 0, y: 0 };
 const details: Frame = { id: "details", name: "Details", x: 400, y: 0, w: 1024, h: 768 };
@@ -160,5 +160,29 @@ describe("selectInspectorSurface", () => {
 
     const frameSurface = selectInspectorSurface({ ...request, selectedFrame: home });
     expect(frameSurface).toMatchObject({ kind: "frame", model: { export: { image: request.exportStatus } } });
+  });
+});
+
+describe("applyToggleLookCommand", () => {
+  it("updates only the explicitly targeted toggle field", () => {
+    // Arrange
+    const current = { label: "Normal", icon: "check", variant: "tonal" as const };
+
+    // Act
+    const next = applyToggleLookCommand(current, { kind: "set-label", value: "Selected" });
+
+    // Assert
+    expect(next).toEqual({ label: "Selected", icon: "check", variant: "tonal" });
+  });
+
+  it("preserves an explicit icon removal instead of falling back to the normal icon", () => {
+    // Arrange
+    const current = { label: "Selected", icon: "check", variant: "filled" as const };
+
+    // Act
+    const next = applyToggleLookCommand(current, { kind: "set-icon", value: null });
+
+    // Assert
+    expect(next).toEqual({ label: "Selected", icon: null, variant: "filled" });
   });
 });
