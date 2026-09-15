@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { motion, useDragControls } from "motion/react";
-import { CONTRASTS, Contrast, FONTS, Item, KIND_SPEC, NavTab, PALETTES, Palette, SHAPES, ShapeScale, Theme, defaultTabsFor, iconSlotsOf, setIconSlot } from "@/lib/tokens";
+import { CONTRASTS, Contrast, FONTS, KIND_SPEC, NavTab, PALETTES, Palette, SHAPES, ShapeScale, Theme, defaultTabsFor } from "@/lib/tokens";
 import { ensureFontLoaded } from "@/lib/theme";
 import { KIND_TEXT, LANGS, Lang, t, useLang } from "@/lib/i18n";
 import { IconPicker } from "./IconPicker";
 import { Icon } from "./M3Node";
 import { VariantSwatch, variantsOf } from "./Inspector";
 import { Field, IconBtn, Segmented, Toggle } from "./ui";
+import type { ItemCommand, ItemInspectorModel } from "@/lib/inspector-contract";
 
 /** Sheet that slides up from the bottom edge; the canvas above stays usable.
  *  Dragging the handle moves the sheet with the finger; a flick or a long pull closes it. */
@@ -95,42 +96,44 @@ function Row({ icon, label, p, children }: { icon: string; label: string; p: Pal
 
 /** The compact phone editor: text, icon, style, state and a one-line note. */
 export function MobileInspector({
-  item,
+  model,
   palette: p,
-  onChange,
-  onDelete,
-  onDuplicate,
+  dispatch,
   onClose,
 }: {
-  item: Item;
+  model: ItemInspectorModel;
   palette: Palette;
-  onChange: (patch: Partial<Item>) => void;
-  onDelete: () => void;
-  onDuplicate: () => void;
+  dispatch: (command: ItemCommand) => void;
   onClose: () => void;
 }) {
   const lang = useLang();
-  const spec = KIND_SPEC[item.kind];
-  const slots = iconSlotsOf(item).filter((s) => !s.key.startsWith("tab:"));
+  const spec = KIND_SPEC[model.kind];
+  const text = model.sections.text;
+  const tabsModel = model.sections.tabs;
+  const style = model.sections.style;
+  const state = model.sections.state;
+  const behavior = model.sections.behavior;
+  const slots = model.sections.icons?.slots.filter((s) => !s.key.startsWith("tab:")) ?? [];
+  const slotSignature = slots.map((slot) => slot.key).join("|");
   const [slotKey, setSlotKey] = useState(slots[0]?.key ?? "icon");
   const [pickerOpen, setPickerOpen] = useState(false);
   useEffect(() => {
-    setSlotKey(iconSlotsOf(item)[0]?.key ?? "icon");
+    setSlotKey(model.sections.icons?.slots[0]?.key ?? "icon");
     setPickerOpen(false);
     setTabSlot(null);
-  }, [item.id, item.kind, item.tabs?.length]);
+  }, [model.id, model.kind, tabsModel?.tabs.length, slotSignature]);
   const activeSlot = slots.find((s) => s.key === slotKey) ?? slots[0];
-  const variants = spec.hasVariant ? variantsOf(item.kind) : [];
-  const tabs: NavTab[] = item.tabs ?? [];
+  const variants = spec.hasVariant ? variantsOf(model.kind) : [];
+  const tabs: readonly NavTab[] = tabsModel?.tabs ?? [];
   const [tabSlot, setTabSlot] = useState<number | null>(null);
   const setTabCount = (n: number) => {
-    const defaults = defaultTabsFor(item.kind);
+    const defaults = defaultTabsFor(model.kind);
     const next: NavTab[] = [];
     for (let i = 0; i < n; i++) next.push(tabs[i] ? { ...tabs[i] } : { ...defaults[i % defaults.length] });
-    onChange({ tabs: next, selected: item.selected !== undefined && item.selected >= n ? undefined : item.selected });
+    dispatch({ kind: "set-tabs", tabs: next, selected: tabsModel?.selected !== undefined && tabsModel.selected >= n ? undefined : tabsModel?.selected, actions: tabsModel?.actions });
   };
   /* a dropdown's rows are options: no icons, and one of them may be the initial value */
-  const isSelect = item.kind === "select";
+  const isSelect = model.kind === "select";
 
   return (
     <div>
@@ -148,9 +151,9 @@ export function MobileInspector({
         >
           <Icon name={spec.paletteIcon} size={22} />
         </div>
-        <span style={{ fontSize: 16, fontWeight: 700, color: p.onSurface, flex: 1 }}>{KIND_TEXT[lang][item.kind]?.noun ?? spec.label}</span>
-        <IconBtn icon="content_copy" p={p} onClick={onDuplicate} title={t("duplicate", lang)} size={44} />
-        <IconBtn icon="delete" p={p} danger onClick={onDelete} title={t("delete", lang)} size={44} />
+        <span style={{ fontSize: 16, fontWeight: 700, color: p.onSurface, flex: 1 }}>{KIND_TEXT[lang][model.kind]?.noun ?? spec.label}</span>
+        <IconBtn icon="content_copy" p={p} onClick={() => dispatch({ kind: "duplicate" })} title={t("duplicate", lang)} size={44} />
+        <IconBtn icon="delete" p={p} danger onClick={() => dispatch({ kind: "delete" })} title={t("delete", lang)} size={44} />
         <IconBtn icon="check" p={p} on onClick={onClose} title={t("done", lang)} size={44} />
       </div>
 
@@ -159,17 +162,17 @@ export function MobileInspector({
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {spec.hasLabel && (
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <Field value={item.label} onChange={(label) => onChange({ label })} placeholder={t("label", lang)} p={p} icon="short_text" height={48} />
-                {item.kind === "text" && (
-                  <IconBtn icon="format_bold" p={p} size={48} on={!!item.bold} onClick={() => onChange({ bold: !item.bold })} title={t("bold", lang)} />
+                <Field value={text.label} onChange={(label) => dispatch({ kind: "set-label", value: label })} placeholder={t("label", lang)} p={p} icon="short_text" height={48} />
+                {model.kind === "text" && (
+                  <IconBtn icon="format_bold" p={p} size={48} on={text.bold} onClick={() => dispatch({ kind: "set-bold", value: !text.bold })} title={t("bold", lang)} />
                 )}
               </div>
             )}
             {spec.hasSupporting && (
               <Field
-                value={item.supporting ?? ""}
-                onChange={(supporting) => onChange({ supporting })}
-                placeholder={item.kind === "snackbar" ? t("action", lang) : t("supporting", lang)}
+                value={text.supporting ?? ""}
+                onChange={(supporting) => dispatch({ kind: "set-supporting", value: supporting })}
+                placeholder={model.kind === "snackbar" ? t("action", lang) : t("supporting", lang)}
                 p={p}
                 icon="notes"
                 height={48}
@@ -179,11 +182,11 @@ export function MobileInspector({
         </Row>
       )}
 
-      {spec.hasTabs && (
+      {spec.hasTabs && tabsModel && (
         <Row icon={isSelect ? "list" : "view_column"} label={t(isSelect ? "options" : "tabs", lang)} p={p}>
-          {!isSelect && item.kind !== "tabs" && (
+          {!isSelect && model.kind !== "tabs" && (
             <Segmented
-              options={(item.kind === "toolbar" ? [2, 3, 4, 5, 6] : [2, 3, 4, 5]).map((n) => ({ key: String(n), label: String(n) }))}
+              options={(model.kind === "toolbar" ? [2, 3, 4, 5, 6] : [2, 3, 4, 5]).map((n) => ({ key: String(n), label: String(n) }))}
               value={String(tabs.length)}
               onChange={(k) => setTabCount(Number(k))}
               p={p}
@@ -195,26 +198,26 @@ export function MobileInspector({
               <div key={i} style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 {isSelect && (
                   <IconBtn
-                    icon={item.selected === i ? "radio_button_checked" : "radio_button_unchecked"}
+                    icon={tabsModel.selected === i ? "radio_button_checked" : "radio_button_unchecked"}
                     p={p}
                     size={48}
-                    on={item.selected === i}
-                    onClick={() => onChange({ selected: item.selected === i ? undefined : i })}
+                    on={tabsModel.selected === i}
+                    onClick={() => dispatch({ kind: "set-tabs", tabs, selected: tabsModel.selected === i ? undefined : i, actions: tabsModel.actions })}
                     title={t("selectedOption", lang)}
                   />
                 )}
-                {item.kind !== "tabs" && !isSelect && (
+                {model.kind !== "tabs" && !isSelect && (
                   <IconBtn icon={tab.icon || "add"} p={p} size={48} on={tabSlot === i} onClick={() => { setTabSlot(tabSlot === i ? null : i); setPickerOpen(false); }} title={t("changeIcon", lang)} />
                 )}
-                {item.kind !== "toolbar" && (
-                  <Field value={tab.label} onChange={(label) => onChange({ tabs: tabs.map((x, j) => (j === i ? { ...x, label } : x)) })} placeholder={t("label", lang)} p={p} height={48} />
+                {model.kind !== "toolbar" && (
+                  <Field value={tab.label} onChange={(label) => dispatch({ kind: "set-tabs", tabs: tabs.map((x, j) => (j === i ? { ...x, label } : x)), selected: tabsModel.selected, actions: tabsModel.actions })} placeholder={t("label", lang)} p={p} height={48} />
                 )}
                 {isSelect && tabs.length > 1 && (
                   <IconBtn
                     icon="close"
                     p={p}
                     size={48}
-                    onClick={() => onChange({ tabs: tabs.filter((_, j) => j !== i), selected: item.selected === undefined ? undefined : item.selected === i ? undefined : item.selected > i ? item.selected - 1 : item.selected })}
+                    onClick={() => dispatch({ kind: "set-tabs", tabs: tabs.filter((_, j) => j !== i), selected: tabsModel.selected === undefined ? undefined : tabsModel.selected === i ? undefined : tabsModel.selected > i ? tabsModel.selected - 1 : tabsModel.selected, actions: tabsModel.actions })}
                     title={t("removeOption", lang)}
                   />
                 )}
@@ -223,7 +226,7 @@ export function MobileInspector({
           </div>
           {isSelect && (
             <button
-              onClick={() => onChange({ tabs: [...tabs, { ...defaultTabsFor(item.kind)[tabs.length % defaultTabsFor(item.kind).length] }] })}
+              onClick={() => dispatch({ kind: "set-tabs", tabs: [...tabs, { ...defaultTabsFor(model.kind)[tabs.length % defaultTabsFor(model.kind).length] }], selected: tabsModel.selected, actions: tabsModel.actions })}
               className="m3-press"
               style={{ marginTop: 8, height: 48, width: "100%", borderRadius: 24, border: `1px solid ${p.outline}`, background: "transparent", color: p.primary, fontSize: 14, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
             >
@@ -233,7 +236,7 @@ export function MobileInspector({
           )}
           {tabSlot !== null && tabs[tabSlot] && (
             <div style={{ marginTop: 8 }}>
-              <IconPicker value={tabs[tabSlot].icon || null} onChange={(icon) => onChange(setIconSlot(item, `tab:${tabSlot}`, icon))} onClose={() => setTabSlot(null)} palette={p} />
+              <IconPicker value={tabs[tabSlot].icon || null} onChange={(icon) => dispatch({ kind: "set-icon-slot", slot: `tab:${tabSlot}`, value: icon })} onClose={() => setTabSlot(null)} palette={p} />
             </div>
           )}
         </Row>
@@ -278,7 +281,7 @@ export function MobileInspector({
             })}
             {activeSlot.value && (
               <button
-                onClick={() => onChange(setIconSlot(item, activeSlot.key, null))}
+                onClick={() => dispatch({ kind: "set-icon-slot", slot: activeSlot.key, value: null })}
                 className="m3-press"
                 style={{
                   height: 48,
@@ -302,7 +305,7 @@ export function MobileInspector({
           </div>
           {pickerOpen && (
             <div style={{ marginTop: 8 }}>
-              <IconPicker value={activeSlot.value} onChange={(icon) => onChange(setIconSlot(item, activeSlot.key, icon))} onClose={() => setPickerOpen(false)} palette={p} />
+              <IconPicker value={activeSlot.value} onChange={(icon) => dispatch({ kind: "set-icon-slot", slot: activeSlot.key, value: icon })} onClose={() => setPickerOpen(false)} palette={p} />
             </div>
           )}
         </Row>
@@ -312,7 +315,7 @@ export function MobileInspector({
         <Row icon="palette" label={t("style", lang)} p={p}>
           <div className="no-scrollbar" style={{ display: "flex", gap: 6, overflowX: "auto", padding: "3px 3px 6px" }}>
             {variants.map((v) => (
-              <VariantSwatch key={v.key} v={v.key} label={v.label} p={p} on={item.variant === v.key} onClick={() => onChange({ variant: v.key })} />
+              <VariantSwatch key={v.key} v={v.key} label={v.label} p={p} on={style.variant === v.key} onClick={() => dispatch({ kind: "set-variant", value: v.key })} />
             ))}
           </div>
         </Row>
@@ -321,17 +324,17 @@ export function MobileInspector({
       {spec.hasChecked && (
         <Row icon="tune" label={t("state", lang)} p={p}>
           <Toggle
-            on={!!item.checked}
-            onChange={(checked) => onChange({ checked })}
+            on={!!state.checked}
+            onChange={(checked) => dispatch({ kind: "set-checked", value: checked })}
             p={p}
-            icon={item.kind === "chip" ? "check_circle" : item.kind === "box" ? "drag_handle" : "toggle_on"}
-            label={item.kind === "chip" ? t("selected", lang) : item.kind === "box" ? t("handle", lang) : t("on", lang)}
+            icon={model.kind === "chip" ? "check_circle" : model.kind === "box" ? "drag_handle" : "toggle_on"}
+            label={model.kind === "chip" ? t("selected", lang) : model.kind === "box" ? t("handle", lang) : t("on", lang)}
           />
         </Row>
       )}
 
       <Row icon="bolt" label={t("behavior", lang)} p={p}>
-        <Field value={item.note ?? ""} onChange={(note) => onChange({ note })} placeholder={["button", "fab", "iconButton", "extendedFab"].includes(item.kind) ? t("whenPressed", lang) : t("whatItDoes", lang)} p={p} icon="bolt" height={48} />
+        <Field value={behavior.note} onChange={(note) => dispatch({ kind: "set-note", value: note })} placeholder={["button", "fab", "iconButton", "extendedFab"].includes(model.kind) ? t("whenPressed", lang) : t("whatItDoes", lang)} p={p} icon="bolt" height={48} />
       </Row>
     </div>
   );

@@ -20,7 +20,7 @@ export function aiErrorText(e: unknown, lang: ReturnType<typeof useLang>): strin
 export type AiActionKey = "behavior" | "describe";
 
 /** The button that asks the model to write the field above it; spins while it works. */
-export function AiWriteBtn({ p, busy, disabled, onClick, onCancel, label, title }: { p: Palette; busy: boolean; disabled?: boolean; onClick: () => void; onCancel: () => void; label: string; title: string }) {
+export function AiWriteBtn({ p, busy, disabled, onClick, onCancel, label, title }: { p: Palette; busy: boolean; disabled?: boolean; onClick?: () => void; onCancel?: () => void; label: string; title: string }) {
   const lang = useLang();
   const shown = busy ? t("cancel", lang) : title;
   return (

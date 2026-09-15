@@ -25,6 +25,7 @@ import {
   clamp,
   connectSpecOf,
   Doc,
+  defaultTabsFor,
   isPlatform,
   Platform,
   Frame,
@@ -36,9 +37,11 @@ import {
   FrameMode,
   frameOfGroup,
   framePresetPatch,
+  framePresetOf,
   frameRadius,
   frameRect,
   frameSizeOf,
+  cardLayoutPatch,
   carryItemSize,
   defaultPlatformOf,
   GAP,
@@ -78,10 +81,12 @@ import {
   FULL_WIDTH,
   fitHeight,
   railExpansionSide,
+  setIconSlot,
+  tabCountPatch,
 } from "@/lib/tokens";
 import { Icon, M3Node, M3Static, MeasuredContent } from "@/components/M3Node";
 import { LayersPanel } from "@/components/Layers";
-import { FrameInspector, FrameSizePicker, Inspector } from "@/components/Inspector";
+import { FrameSizePicker, InspectorHost } from "@/components/Inspector";
 import { Preview } from "@/components/Preview";
 import { Logo } from "@/components/Logo";
 import { PartsPalette } from "@/components/PartsPalette";
@@ -104,6 +109,13 @@ import { ThemeContext, ensureFontLoaded, ensureLangFontLoaded } from "@/lib/them
 import { BottomSheet, MobileActionBar, MobileInspector, MobileLang, MobileSettings } from "@/components/Mobile";
 import { ConfirmDialog, IconBtn, Segmented } from "@/components/ui";
 import { Lang, LangContext, SEED_TEXT, getLang, setGlobalLang, t, translateDefaultFrameName, translateDefaultText } from "@/lib/i18n";
+import {
+  selectInspectorSurface,
+  type AiCapability,
+  type ExportStatus,
+  type InspectorCommand,
+  type InspectorDispatch,
+} from "@/lib/inspector-contract";
 
 /** the screens while a model drafts: primary, tertiary and primary container, drifting */
 const DRAFT_GRADIENT = (p: Palette) => `linear-gradient(120deg, ${p.primaryContainer}, ${p.tertiaryContainer}, ${p.primary}, ${p.secondaryContainer}, ${p.primaryContainer})`;
@@ -375,6 +387,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   const [confirmClear, setConfirmClear] = useState(false);
   /** frame being rendered offscreen for the PNG export */
   const [exportFrame, setExportFrame] = useState<Frame | null>(null);
+  const [exportError, setExportError] = useState<{ frameId: string; message: string } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [brief, setBrief] = useState("");
@@ -2588,18 +2601,21 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   /** The screen is re-rendered offscreen at 1:1 with static parts, so the
    *  canvas zoom, selection outlines and in-flight animations never leak into the PNG. */
   const saveFrameImage = async (f: Frame) => {
+    setExportError(null);
     setExportFrame(f);
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
     try {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
       await document.fonts?.ready;
       const el = document.querySelector<HTMLElement>(`[data-export="${f.id}"]`);
-      if (!el) return;
+      if (!el) throw new Error("export-surface-not-found");
       const { w, h } = frameSizeOf(f);
       const url = await toPng(el, { pixelRatio: 2, cacheBust: true, width: w, height: h });
       const a = document.createElement("a");
       a.href = url;
       a.download = `${f.name || "screen"}.png`;
       a.click();
+    } catch {
+      setExportError({ frameId: f.id, message: t("exportError", lang) });
     } finally {
       setExportFrame(null);
     }
@@ -2884,6 +2900,242 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   /** the same document, for callbacks that were created on an earlier render */
   const docRef = useRef(doc);
   docRef.current = doc;
+
+  /* Inspector's public boundary is a read model plus typed commands. The selector
+   * owns routing; the Inspector never receives the document or patch callbacks. */
+  const itemAi: AiCapability = !aiReady
+    ? { kind: "unavailable", reason: aiReason ?? t("aiNoKey", lang) }
+    : !selected || !tidyTarget
+      ? { kind: "unavailable", reason: aiReason ?? t("aiSelectScreen", lang) }
+      : aiBusy && aiFrameId === tidyTarget.id
+        ? { kind: "running", cancel: cancelAi }
+        : { kind: "ready", run: () => runAi("behavior", tidyTarget, selected.id) };
+  const frameAi: AiCapability = !aiReady
+    ? { kind: "unavailable", reason: t("aiNoKey", lang) }
+    : selectedFrame && aiBusy && aiFrameId === selectedFrame.id
+      ? { kind: "running", cancel: cancelAi }
+      : { kind: "ready", run: () => selectedFrame && runAi("describe", selectedFrame) };
+  const exportStatus: ExportStatus = selectedFrame && exportFrame?.id === selectedFrame.id
+    ? { kind: "running" }
+    : selectedFrame && exportError?.frameId === selectedFrame.id
+      ? { kind: "error", message: exportError.message }
+      : { kind: "idle" };
+  const inspectorSurface = selectInspectorSurface({
+    selectedIds,
+    selectedItem: selectedIds.length === 1 ? selected : null,
+    selectedFrame,
+    selectedGroup,
+    selectedPartFrame,
+    groups,
+    frames,
+    frameMode: frame,
+    itemAi,
+    frameAi,
+    prompt: selectedFrame ? buildPrompt(doc, widths, selectedFrame.id, lang) : "",
+    exportStatus,
+    tidy: tidyState ?? "done",
+  });
+
+  const dispatchInspector: InspectorDispatch = useCallback(
+    (command: InspectorCommand) => {
+      switch (command.target) {
+        case "selection":
+          switch (command.command.kind) {
+            case "group":
+              groupSelected();
+              return;
+            case "ungroup":
+              ungroupSelected();
+              return;
+            case "align":
+              alignSelected(command.command.value);
+              return;
+            case "delete":
+              deleteSelected();
+              return;
+            case "duplicate":
+              duplicateSelected();
+              return;
+          }
+          return;
+        case "item":
+          if (!selected || command.id !== selected.id) return;
+          switch (command.command.kind) {
+            case "align":
+              alignSelected(command.command.value);
+              return;
+            case "set-label":
+              patchSelected({ label: command.command.value });
+              return;
+            case "set-supporting":
+              patchSelected({ supporting: command.command.value });
+              return;
+            case "set-bold":
+              patchSelected({ bold: command.command.value });
+              return;
+            case "set-content-align":
+              patchSelected({ contentAlign: command.command.value });
+              return;
+            case "set-text-color":
+              patchSelected({ textColor: command.command.value });
+              return;
+            case "set-variant":
+              patchSelected({ variant: command.command.value });
+              return;
+            case "set-icon-slot":
+              patchSelected(setIconSlot(selected, command.command.slot, command.command.value));
+              return;
+            case "set-tabs":
+              patchSelected({ tabs: [...command.command.tabs], selected: command.command.selected, actions: command.command.actions ? { ...command.command.actions } : undefined });
+              return;
+            case "set-card-layout":
+              patchSelected(cardLayoutPatch(command.command.value));
+              return;
+            case "set-image-size":
+              patchSelected({ imageSize: command.command.value });
+              return;
+            case "set-image-source":
+              patchSelected({ src: command.command.value });
+              return;
+            case "set-fill":
+              patchSelected({ fill: command.command.value });
+              return;
+            case "set-icon-fill":
+              patchSelected({ iconFill: command.command.value });
+              return;
+            case "set-toggle":
+              patchSelected({ toggle: command.command.value });
+              return;
+            case "set-checked":
+              patchSelected({ checked: command.command.value });
+              return;
+            case "set-switch":
+              patchSelected({ switch: command.command.value ? true : undefined });
+              return;
+            case "set-no-check":
+              patchSelected({ noCheck: command.command.value ? true : undefined });
+              return;
+            case "set-contained":
+              patchSelected({ contained: command.command.value });
+              return;
+            case "set-wavy":
+              patchSelected({ wavy: command.command.value });
+              return;
+            case "set-value":
+              patchSelected({ value: command.command.value });
+              return;
+            case "set-rail":
+              patchSelected({ railExpanded: command.command.expanded, railModal: command.command.modal });
+              return;
+            case "set-track-thickness":
+              patchSelected({ trackThickness: command.command.value });
+              return;
+            case "set-size":
+              patchSelected({ size: command.command.value });
+              return;
+            case "set-size2":
+              patchSelected({ size2: command.command.value });
+              return;
+            case "set-radius":
+              patchSelected(command.command.side === "top" ? { radiusTop: command.command.value } : { radiusBottom: command.command.value });
+              return;
+            case "set-corners":
+              patchSelected({ corners: command.command.value, radiusTop: command.command.radiusTop, radiusBottom: command.command.radiusBottom });
+              return;
+            case "set-action": {
+              if (command.command.slot === null) {
+                patchSelected({ action: command.command.value });
+                return;
+              }
+              const actions = { ...(selected.actions ?? {}) };
+              if (command.command.value) actions[command.command.slot] = command.command.value;
+              else delete actions[command.command.slot];
+              patchSelected({ actions: Object.keys(actions).length ? actions : undefined });
+              return;
+            }
+            case "set-note":
+              patchSelected({ note: command.command.value });
+              return;
+            case "restore-note":
+              patchSelected({ note: command.command.value, noteHistory: command.command.history ? [...command.command.history] : undefined });
+              return;
+            case "delete":
+              deleteSelected();
+              return;
+            case "duplicate":
+              duplicateSelected();
+              return;
+          }
+          return;
+        case "frame": {
+          const current = framesRef.current.find((candidate) => candidate.id === command.id);
+          if (!current) return;
+          switch (command.command.kind) {
+            case "set-name":
+              patchFrame(command.id, { name: command.command.value });
+              return;
+            case "set-note":
+              patchFrame(command.id, { note: command.command.value });
+              return;
+            case "restore-note":
+              patchFrame(command.id, { note: command.command.value, noteHistory: command.command.history ? [...command.command.history] : undefined });
+              return;
+            case "set-background":
+              patchFrame(command.id, { bg: command.command.value });
+              return;
+            case "set-place":
+              setPlace(current, command.command.value);
+              return;
+            case "set-preset":
+              setFramePreset(command.id, command.command.value);
+              return;
+            case "set-swipe": {
+              const swipe = { ...(current.swipe ?? {}) };
+              if (command.command.target) swipe[command.command.direction] = command.command.target;
+              else delete swipe[command.command.direction];
+              patchFrame(command.id, { swipe: Object.keys(swipe).length ? swipe : undefined });
+              return;
+            }
+            case "tidy":
+              tidy(current);
+              return;
+            case "delete":
+              deleteFrame(command.id);
+              return;
+            case "duplicate":
+              duplicateFrame(command.id);
+              return;
+            case "preview":
+              openPreview(command.id);
+              return;
+            case "export-image":
+              void saveFrameImage(current);
+              return;
+          }
+        }
+      }
+    },
+    [
+      alignSelected,
+      buildPrompt,
+      deleteFrame,
+      deleteSelected,
+      doc,
+      duplicateFrame,
+      duplicateSelected,
+      groupSelected,
+      lang,
+      openPreview,
+      patchFrame,
+      patchSelected,
+      saveFrameImage,
+      selected,
+      setFramePreset,
+      setPlace,
+      tidy,
+      ungroupSelected,
+    ],
+  );
 
   /** arrows from tappable parts to the frames they open */
   const links = useMemo(() => {
@@ -3608,7 +3860,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
                         }}
                       >
                         <div onPointerDown={(e) => e.stopPropagation()}>
-                          <FrameSizePicker frame={f} onChange={(preset) => setFramePreset(f.id, preset)} palette={p} compact />
+                          <FrameSizePicker value={framePresetOf(f)} onChange={(preset) => setFramePreset(f.id, preset)} palette={p} compact />
                         </div>
                         {f.name || t("screen", lang)}
                       </div>
@@ -3931,17 +4183,15 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
           )}
 
           <AnimatePresence>
-            {isMobile && sheet === "edit" && selected && (
+            {isMobile && sheet === "edit" && inspectorSurface.kind === "item" && (
               <BottomSheet key="edit" p={p} onClose={() => setSheet(null)}>
                 <MobileInspector
-                  item={selected}
+                  model={inspectorSurface.model}
                   palette={p}
-                  onChange={patchSelected}
-                  onDelete={() => {
-                    deleteSelected();
-                    setSheet(null);
+                  dispatch={(command) => {
+                    dispatchInspector({ target: "item", id: inspectorSurface.model.id, command });
+                    if (command.kind === "delete") setSheet(null);
                   }}
-                  onDuplicate={duplicateSelected}
                   onClose={() => setSheet(null)}
                 />
               </BottomSheet>
@@ -4048,48 +4298,8 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
               />
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
-              {rightTab === "edit" && selectedFrame && !selected ? (
-                <FrameInspector
-                  frame={selectedFrame}
-                  palette={p}
-                  onSize={(preset) => setFramePreset(selectedFrame.id, preset)}
-                  onChange={(patch) => patchFrame(selectedFrame.id, patch)}
-                  onDelete={() => deleteFrame(selectedFrame.id)}
-                  onDuplicate={() => duplicateFrame(selectedFrame.id)}
-                  onPreview={() => openPreview(selectedFrame.id)}
-                  prompt={buildPrompt(doc, widths, selectedFrame.id, lang)}
-                  onSaveImage={() => saveFrameImage(selectedFrame)}
-                  frames={frames}
-                  tidy={tidyState ?? "done"}
-                  onTidy={() => tidy(selectedFrame)}
-                  onPlace={(pl) => setPlace(selectedFrame, pl)}
-                  ai={{ ready: aiReady, reason: aiReason, busy: aiBusy && aiFrameId === selectedFrame.id, onRun: () => runAi("describe", selectedFrame), onCancel: cancelAi }}
-                />
-              ) : rightTab === "edit" ? (
-                <Inspector
-                  ai={{
-                    ready: aiReady && !!tidyTarget,
-                    reason: aiReason,
-                    busy: aiBusy,
-                    onRun: () => {
-                      if (tidyTarget && selected) runAi("behavior", tidyTarget, selected.id);
-                    },
-                    onCancel: cancelAi,
-                  }}
-                  item={selectedIds.length > 1 ? null : selected}
-                  railStandalone={groups.some((g) => g.items.length === 1 && g.items[0].id === selected?.id)}
-                  frame={selectedPartFrame}
-                  palette={p}
-                  frames={frame === "phone" ? frames : []}
-                  onChange={patchSelected}
-                  onDelete={deleteSelected}
-                  onDuplicate={duplicateSelected}
-                  onAlign={alignSelected}
-                  multi={selectedIds.length}
-                  grouped={!!selectedGroup}
-                  onGroup={groupSelected}
-                  onUngroup={ungroupSelected}
-                />
+              {rightTab === "edit" ? (
+                <InspectorHost surface={inspectorSurface} palette={p} dispatch={dispatchInspector} />
               ) : (
                 <PromptPanel
                   doc={doc}
