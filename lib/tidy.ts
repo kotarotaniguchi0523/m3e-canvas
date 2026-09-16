@@ -1,5 +1,4 @@
-import { CONTENT_W, Frame, Group, Item, KIND_SPEC, Kind, PHONE_MARGIN, RAIL_COLLAPSED_W, railExpansionSide, railWidth, railLayoutWidth, canJoin, isPhoneFrame, scaleR, carryItemSize, connectSpecOf, frameOfGroup, frameRect, frameSizeOf, groupBounds, layoutOf, isExpanded, isFullWidth } from "./tokens";
-import { KINDS } from "./kind";
+import { COMPONENT_KIND, CONTENT_W, Frame, Group, Item, KIND_SPEC, ComponentKind, PHONE_MARGIN, RAIL_COLLAPSED_W, railExpansionSide, railWidth, railLayoutWidth, canJoin, isPhoneFrame, scaleR, carryItemSize, connectSpecOf, frameOfGroup, frameRect, frameSizeOf, groupBounds, layoutOf, isExpanded, isFullWidth } from "./tokens";
 
 /* Rule-based layout for one screen. Nothing here is guessed by a model.
  *
@@ -45,7 +44,7 @@ const JOIN_GAP_Y = 48;
 const APART_GAP_X = JOIN_GAP_X + 8;
 const APART_GAP_Y = JOIN_GAP_Y + 8;
 
-const LIST_KINDS: ReadonlySet<Kind> = new Set<Kind>([KINDS.listItem, KINDS.textField, KINDS.select, KINDS.checkbox, KINDS.radio, KINDS.switch, KINDS.chip, KINDS.divider, KINDS.card]);
+const LIST_KINDS: ReadonlySet<ComponentKind> = new Set<ComponentKind>([COMPONENT_KIND.listItem, COMPONENT_KIND.textField, COMPONENT_KIND.select, COMPONENT_KIND.checkbox, COMPONENT_KIND.radio, COMPONENT_KIND.switch, COMPONENT_KIND.chip, COMPONENT_KIND.divider, COMPONENT_KIND.card]);
 
 /** one movable unit: a group plus everything nested inside or overlapping it */
 type Unit = { ids: string[]; bb: Rect; /** the first part, for family checks */ probe: Item };
@@ -156,15 +155,15 @@ function rowsOf(units: Unit[]): Unit[][] {
   return out;
 }
 
-const isRail = (u: Unit) => u.probe.kind === KINDS.navRail;
-const isTop = (u: Unit) => u.probe.kind === KINDS.topAppBar || u.probe.kind === KINDS.tabs;
-const isBottomBar = (u: Unit) => u.probe.kind === KINDS.bottomNav || (u.probe.kind === KINDS.box && !!u.probe.checked);
-const isFloatingBottom = (u: Unit) => u.probe.kind === KINDS.toolbar || u.probe.kind === KINDS.snackbar;
-const isFab = (u: Unit) => u.probe.kind === KINDS.fab || u.probe.kind === KINDS.extendedFab || u.probe.kind === KINDS.fabMenu;
-const isOverlay = (u: Unit) => u.probe.kind === KINDS.dialog;
+const isRail = (u: Unit) => u.probe.kind === COMPONENT_KIND.navRail;
+const isTop = (u: Unit) => u.probe.kind === COMPONENT_KIND.topAppBar || u.probe.kind === COMPONENT_KIND.tabs;
+const isBottomBar = (u: Unit) => u.probe.kind === COMPONENT_KIND.bottomNav || (u.probe.kind === COMPONENT_KIND.box && !!u.probe.checked);
+const isFloatingBottom = (u: Unit) => u.probe.kind === COMPONENT_KIND.toolbar || u.probe.kind === COMPONENT_KIND.snackbar;
+const isFab = (u: Unit) => u.probe.kind === COMPONENT_KIND.fab || u.probe.kind === COMPONENT_KIND.extendedFab || u.probe.kind === COMPONENT_KIND.fabMenu;
+const isOverlay = (u: Unit) => u.probe.kind === COMPONENT_KIND.dialog;
 /** a line of text, and the small controls that pair with one across a row */
-const isLabel = (u: Unit) => u.probe.kind === KINDS.text;
-const isControl = (u: Unit) => u.probe.kind === KINDS.switch || u.probe.kind === KINDS.checkbox || u.probe.kind === KINDS.radio || u.probe.kind === KINDS.iconButton;
+const isLabel = (u: Unit) => u.probe.kind === COMPONENT_KIND.text;
+const isControl = (u: Unit) => u.probe.kind === COMPONENT_KIND.switch || u.probe.kind === COMPONENT_KIND.checkbox || u.probe.kind === COMPONENT_KIND.radio || u.probe.kind === COMPONENT_KIND.iconButton;
 const isAnchored = (u: Unit) => isRail(u) || isTop(u) || isBottomBar(u) || isFloatingBottom(u) || isFab(u) || isOverlay(u);
 
 /** where a unit sits horizontally, so tidying keeps a right-aligned part on the right.
@@ -187,8 +186,8 @@ function gapBefore(prev: Unit[] | null, row: Unit[]): number {
   if (prev.length === 1 && row.length === 1 && canJoin(prev[0].probe, row[0].probe) && connectSpecOf(prev[0].probe)?.axis === "y") return APART_GAP_Y;
   const pk = prev.length === 1 ? prev[0].probe.kind : null;
   const k = row.length === 1 ? row[0].probe.kind : null;
-  if (pk === "text") return TIGHT_GAP;
-  if (pk === "divider" || k === "divider") return TIGHT_GAP;
+  if (pk === COMPONENT_KIND.text) return TIGHT_GAP;
+  if (pk === COMPONENT_KIND.divider || k === COMPONENT_KIND.divider) return TIGHT_GAP;
   if (pk && k && pk === k && LIST_KINDS.has(k)) return TIGHT_GAP;
   return ROW_GAP;
 }
@@ -223,25 +222,25 @@ export function carryFrame(groups: Group[], frame: Frame, to: Frame, frames: Fra
    * inside a hand-made group is part of that group's drawing. Other standalone rails keep their kind. */
   const expanded = isExpanded(after.w);
   const mine = groups.filter((g) => owner.get(g.id) === frame.id);
-  const standsAlone = (g: Group, kind: Kind) => g.items.length === 1 && g.items[0].kind === kind;
-  const navGroup = mine.find((g) => standsAlone(g, KINDS.bottomNav) || standsAlone(g, KINDS.navRail));
+  const standsAlone = (g: Group, kind: ComponentKind) => g.items.length === 1 && g.items[0].kind === kind;
+  const navGroup = mine.find((g) => standsAlone(g, COMPONENT_KIND.bottomNav) || standsAlone(g, COMPONENT_KIND.navRail));
   const swapNav = (g: Group, it: Item): Item => {
     if (g !== navGroup) return it;
-    if (expanded && it.kind === KINDS.bottomNav) return { ...it, kind: KINDS.navRail, railExpanded: false, size: undefined, size2: after.h, radiusTop: it.radiusBottom, radiusBottom: it.radiusTop };
-    if (!expanded && it.kind === KINDS.navRail) {
+    if (expanded && it.kind === COMPONENT_KIND.bottomNav) return { ...it, kind: COMPONENT_KIND.navRail, railExpanded: false, size: undefined, size2: after.h, radiusTop: it.radiusBottom, radiusBottom: it.radiusTop };
+    if (!expanded && it.kind === COMPONENT_KIND.navRail) {
       const { railExpanded: _expanded, railModal: _modal, [railExpansionSide]: _side, ...bar } = it;
-      return { ...bar, kind: KINDS.bottomNav, size: after.w, size2: undefined, radiusTop: it.radiusBottom, radiusBottom: it.radiusTop };
+      return { ...bar, kind: COMPONENT_KIND.bottomNav, size: after.w, size2: undefined, radiusTop: it.radiusBottom, radiusBottom: it.radiusTop };
     }
     return it;
   };
   /* a rail keeps the side it stood on; one that grows out of a bar starts on the left */
-  const side = navGroup && standsAlone(navGroup, KINDS.navRail) ? railSide(navGroup, frame, widths) : "left";
+  const side = navGroup && standsAlone(navGroup, COMPONENT_KIND.navRail) ? railSide(navGroup, frame, widths) : "left";
   const railSlots = (swap: boolean) => mine.reduce((slot, g) => {
     if (g.items.length !== 1) return slot;
     const item = swap ? swapNav(g, g.items[0]) : g.items[0];
-    if (item.kind !== KINDS.navRail) return slot;
+    if (item.kind !== COMPONENT_KIND.navRail) return slot;
     const w = railLayoutWidth(item);
-    const right = g.items[0].kind === KINDS.navRail && railSide(g, frame, widths) === "right";
+    const right = g.items[0].kind === COMPONENT_KIND.navRail && railSide(g, frame, widths) === "right";
     return { total: slot.total + w, left: slot.left + (right ? 0 : w) };
   }, { total: 0, left: 0 });
   const beforeSlots = railSlots(false);
@@ -281,7 +280,7 @@ export function railSide(g: Group, frame: Frame, widths: Record<string, number>)
 /** where a bar dropped on a screen goes: the screen's width less its rails, starting after a rail on the left */
 export function barSlotOf(groups: Group[], frame: Frame, frames: Frame[], widths: Record<string, number>): { x: number; w: number } {
   const { w } = frameSizeOf(frame);
-  const rails = groups.filter((g) => frameOfGroup(g, frames, widths)?.id === frame.id && g.items.length === 1 && g.items[0].kind === KINDS.navRail);
+  const rails = groups.filter((g) => frameOfGroup(g, frames, widths)?.id === frame.id && g.items.length === 1 && g.items[0].kind === COMPONENT_KIND.navRail);
   const left = rails.filter((g) => railSide(g, frame, widths) === "left").reduce((sum, g) => sum + railLayoutWidth(g.items[0]), 0);
   return { x: frame.x + left, w: w - rails.reduce((sum, g) => sum + railLayoutWidth(g.items[0]), 0) };
 }
@@ -341,8 +340,8 @@ function evenCorners(groups: Map<string, Group>): boolean {
   const cards: { g: Group; it: Item; r: number }[] = [];
   for (const g of groups.values())
     for (const it of g.items) {
-      if (it.kind === KINDS.card && !it.corners && it.radiusTop !== undefined) cards.push({ g, it, r: it.radiusTop });
-      else if (it.kind === KINDS.box && !it.corners && (it.radiusTop ?? 0) === (it.radiusBottom ?? 0)) boxes.push({ g, it, r: it.radiusTop ?? 0 });
+      if (it.kind === COMPONENT_KIND.card && !it.corners && it.radiusTop !== undefined) cards.push({ g, it, r: it.radiusTop });
+      else if (it.kind === COMPONENT_KIND.box && !it.corners && (it.radiusTop ?? 0) === (it.radiusBottom ?? 0)) boxes.push({ g, it, r: it.radiusTop ?? 0 });
     }
   let changed = false;
   const even = (list: typeof boxes, prefer: number) => {
@@ -351,7 +350,7 @@ function evenCorners(groups: Map<string, Group>): boolean {
     for (const { g, it, r } of list) {
       if (r === common || Math.abs(r - common) > RADIUS_SNAP) continue;
       const cur = groups.get(g.id)!;
-      groups.set(g.id, { ...cur, items: cur.items.map((x) => (x.id === it.id ? (x.kind === KINDS.card ? { ...x, radiusTop: common } : { ...x, radiusTop: common, radiusBottom: common }) : x)) });
+      groups.set(g.id, { ...cur, items: cur.items.map((x) => (x.id === it.id ? (x.kind === COMPONENT_KIND.card ? { ...x, radiusTop: common } : { ...x, radiusTop: common, radiusBottom: common }) : x)) });
       changed = true;
     }
   };
@@ -415,7 +414,7 @@ export function tidyFrame(groups: Group[], frame: Frame, frames: Frame[], widths
   };
   const spanned = before.map((g) => {
     const it = g.items[0];
-    if (!isPhoneFrame(frame) || g.items.length !== 1 || it.kind !== KINDS.switch || !it.label.trim() || it.size || !alone(g)) return g;
+    if (!isPhoneFrame(frame) || g.items.length !== 1 || it.kind !== COMPONENT_KIND.switch || !it.label.trim() || it.size || !alone(g)) return g;
     widened = true;
     return { ...g, items: [{ ...it, size: CONTENT_W }] };
   });

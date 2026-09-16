@@ -8,10 +8,10 @@ import {
   FramePreset,
   HALF_W,
   KIND_SPEC,
-  KINDS,
+  COMPONENT_KIND,
   PHONE_H,
   PHONE_W,
-  Kind,
+  ComponentKind,
   NavTab,
   Palette,
   SWIPE_DIRS,
@@ -533,7 +533,7 @@ function AlignSection({ single, onAlign, p }: { single: boolean; onAlign: (kind:
 }
 
 
-function ItemHeader({ kind, p, dispatch }: { kind: Kind; p: Palette; dispatch: (command: ItemHeaderCommand) => void }) {
+function ItemHeader({ kind, p, dispatch }: { kind: ComponentKind; p: Palette; dispatch: (command: ItemHeaderCommand) => void }) {
   const lang = useLang();
   const spec = KIND_SPEC[kind];
   return (
@@ -580,7 +580,7 @@ function ToggleAppearanceSection({ toggle, tab, p, onEnabledChange, onTabChange 
   );
 }
 
-function ItemTextSection({ kind, model, p, dispatch, automaticTextColor }: { kind: Kind; model: ItemTextModel; p: Palette; dispatch: (command: ItemTextCommand) => void; automaticTextColor: string }) {
+function ItemTextSection({ kind, model, p, dispatch, automaticTextColor }: { kind: ComponentKind; model: ItemTextModel; p: Palette; dispatch: (command: ItemTextCommand) => void; automaticTextColor: string }) {
   const lang = useLang();
   const spec = KIND_SPEC[kind];
   return (
@@ -589,7 +589,7 @@ function ItemTextSection({ kind, model, p, dispatch, automaticTextColor }: { kin
         {spec.hasLabel && (
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <Field value={model.label} onChange={(label) => dispatch({ kind: "set-label", value: label })} placeholder={t("label", lang)} p={p} icon="short_text" />
-            {kind === KINDS.text && (
+            {kind === COMPONENT_KIND.text && (
               <IconBtn icon="format_bold" p={p} size={44} on={model.bold} onClick={() => dispatch({ kind: "set-bold", value: !model.bold })} title={t("bold", lang)} />
             )}
           </div>
@@ -598,15 +598,15 @@ function ItemTextSection({ kind, model, p, dispatch, automaticTextColor }: { kin
           <Field
             value={model.supporting ?? ""}
             onChange={(supporting) => dispatch({ kind: "set-supporting", value: supporting })}
-            placeholder={kind === KINDS.snackbar ? t("action", lang) : t("supporting", lang)}
+            placeholder={kind === COMPONENT_KIND.snackbar ? t("action", lang) : t("supporting", lang)}
             p={p}
             icon="notes"
-            multiline={kind === KINDS.card}
+            multiline={kind === COMPONENT_KIND.card}
             rows={1}
-            grow={kind === KINDS.card}
+            grow={kind === COMPONENT_KIND.card}
           />
         )}
-        {kind === KINDS.card && (
+        {kind === COMPONENT_KIND.card && (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
               <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: p.onSurfaceVariant }}>{t("textPosition", lang)}</span>
@@ -653,10 +653,10 @@ function ToggleIconSection({ value, p, onChange }: { value: string | null; p: Pa
   );
 }
 
-function ToggleStyleSection({ kind, variant, p, onChange }: { kind: Kind; variant: Variant; p: Palette; onChange: (value: Variant) => void }) {
+function ToggleStyleSection({ kind, variant, p, onChange }: { kind: ComponentKind; variant: Variant; p: Palette; onChange: (value: Variant) => void }) {
   const lang = useLang();
   const variants = KIND_SPEC[kind].hasVariant ? variantsOf(kind) : [];
-  if (!variants.length || kind === KINDS.card) return null;
+  if (!variants.length || kind === COMPONENT_KIND.card) return null;
   return (
     <Section id="toggle-style" icon="palette" title={t("style", lang)} p={p}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -666,7 +666,7 @@ function ToggleStyleSection({ kind, variant, p, onChange }: { kind: Kind; varian
   );
 }
 
-function ToggleStateSections({ kind, text, icons, toggle, normalVariant, p, dispatch }: { kind: Kind; text: ItemTextModel; icons: ItemIconModel | undefined; toggle: NonNullable<ItemStyleModel["toggle"]>; normalVariant: Variant; p: Palette; dispatch: (command: ToggleLookCommand) => void }) {
+function ToggleStateSections({ kind, text, icons, toggle, normalVariant, p, dispatch }: { kind: ComponentKind; text: ItemTextModel; icons: ItemIconModel | undefined; toggle: NonNullable<ItemStyleModel["toggle"]>; normalVariant: Variant; p: Palette; dispatch: (command: ToggleLookCommand) => void }) {
   const icon = icons?.slots.find((slot) => slot.key === "icon")?.value ?? null;
   const toggleIcon = toggle.icon !== undefined ? toggle.icon : icon;
   return (
@@ -678,14 +678,14 @@ function ToggleStateSections({ kind, text, icons, toggle, normalVariant, p, disp
   );
 }
 
-function TabsSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemTabsModel; p: Palette; dispatch: (command: ItemTabsCommand) => void }) {
+function TabsSection({ kind, model, p, dispatch }: { kind: ComponentKind; model: ItemTabsModel; p: Palette; dispatch: (command: ItemTabsCommand) => void }) {
   const lang = useLang();
   const tabs = model.tabs;
-  const isSelect = kind === KINDS.select;
-  const tabIcons = kind !== KINDS.tabs && kind !== KINDS.select;
-  const tabLabels = kind !== KINDS.toolbar;
-  const growsFreely = isSelect || kind === KINDS.tabs;
-  const hasSelected = kind === KINDS.bottomNav || kind === KINDS.navRail || kind === KINDS.tabs || isSelect;
+  const isSelect = kind === COMPONENT_KIND.select;
+  const tabIcons = kind !== COMPONENT_KIND.tabs && kind !== COMPONENT_KIND.select;
+  const tabLabels = kind !== COMPONENT_KIND.toolbar;
+  const growsFreely = isSelect || kind === COMPONENT_KIND.tabs;
+  const hasSelected = kind === COMPONENT_KIND.bottomNav || kind === COMPONENT_KIND.navRail || kind === COMPONENT_KIND.tabs || isSelect;
   const selectedTab = isSelect && model.selected === undefined ? -1 : Math.min(model.selected ?? 0, Math.max(0, tabs.length - 1));
   const remapActions = (actions: ItemTabsModel["actions"], to: (index: number) => number | undefined): ItemTabsModel["actions"] | undefined => {
     const next: ItemActions = {};
@@ -712,14 +712,14 @@ function TabsSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemTabs
   const removeTab = (index: number) => {
     const next = tabs.filter((_, i) => i !== index);
     const last = Math.max(0, next.length - 1);
-    const selected = model.selected === undefined ? undefined : model.selected > index ? model.selected - 1 : model.selected < index ? model.selected : kind === KINDS.select ? undefined : Math.min(index, last);
+    const selected = model.selected === undefined ? undefined : model.selected > index ? model.selected - 1 : model.selected < index ? model.selected : kind === COMPONENT_KIND.select ? undefined : Math.min(index, last);
     setTabs(next, selected, remapActions(model.actions, (i) => i === index ? undefined : i > index ? i - 1 : i));
   };
   return (
     <Section id="tabs" icon={isSelect ? "list" : "view_column"} title={t(isSelect ? "options" : "tabs", lang)} p={p}>
       {!growsFreely && (
         <Segmented
-          options={(kind === KINDS.toolbar ? [2, 3, 4, 5, 6] : [2, 3, 4, 5]).map((n) => ({ key: String(n), label: String(n) }))}
+          options={(kind === COMPONENT_KIND.toolbar ? [2, 3, 4, 5, 6] : [2, 3, 4, 5]).map((n) => ({ key: String(n), label: String(n) }))}
           value={String(tabs.length)}
           onChange={(value) => setTabCount(Number(value))}
           p={p}
@@ -756,12 +756,12 @@ function TabsSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemTabs
   );
 }
 
-function MediaSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemMediaModel; p: Palette; dispatch: (command: ItemMediaCommand) => void }) {
+function MediaSection({ kind, model, p, dispatch }: { kind: ComponentKind; model: ItemMediaModel; p: Palette; dispatch: (command: ItemMediaCommand) => void }) {
   const lang = useLang();
   const uploadId = `inspector-image-${kind}`;
   return (
     <Section id="image" icon="image" title={t("image", lang)} p={p}>
-      {kind === KINDS.card && (
+      {kind === COMPONENT_KIND.card && (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
           <CardLayoutPicker value={model.layout} onChange={(layout) => dispatch({ kind: "set-card-layout", value: layout })} p={p} />
           {!model.noImage && model.imagePos !== "background" && (model.imageMax ?? 0) > CARD_IMAGE_MIN && (
@@ -830,10 +830,10 @@ function IconSection({ model, navigation, p, dispatch }: { model: ItemIconModel;
   );
 }
 
-function StyleSection({ kind, p, variant, dispatch }: { kind: Kind; p: Palette; variant: Variant; dispatch: (command: ItemStyleCommand) => void }) {
+function StyleSection({ kind, p, variant, dispatch }: { kind: ComponentKind; p: Palette; variant: Variant; dispatch: (command: ItemStyleCommand) => void }) {
   const lang = useLang();
   const variants = KIND_SPEC[kind].hasVariant ? variantsOf(kind) : [];
-  if (!variants.length || kind === KINDS.card) return null;
+  if (!variants.length || kind === COMPONENT_KIND.card) return null;
   return (
     <Section id="style" icon="palette" title={t("style", lang)} p={p}>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -843,15 +843,15 @@ function StyleSection({ kind, p, variant, dispatch }: { kind: Kind; p: Palette; 
   );
 }
 
-function FillSection({ kind, p, style, dispatch }: { kind: Kind; p: Palette; style: ItemStyleModel; dispatch: (command: ItemFillCommand) => void }) {
+function FillSection({ kind, p, style, dispatch }: { kind: ComponentKind; p: Palette; style: ItemStyleModel; dispatch: (command: ItemFillCommand) => void }) {
   const lang = useLang();
   const spec = KIND_SPEC[kind];
   if (!spec.hasFill) return null;
-  const fill = style.fill ?? (kind === KINDS.card ? cardDefaultFillOf(style.variant) : "surfaceContainerLow");
+  const fill = style.fill ?? (kind === COMPONENT_KIND.card ? cardDefaultFillOf(style.variant) : "surfaceContainerLow");
   return (
     <Section id="fill" icon="format_color_fill" title={t("background", lang)} p={p}>
-      <TokenChips value={fill} onChange={(value) => dispatch({ kind: "set-fill", value })} p={p} none={kind === KINDS.card} noneOn={kind === KINDS.card && !style.fill} onNone={() => dispatch({ kind: "set-fill", value: undefined })} noneColor={kind === KINDS.card ? p[cardDefaultFillOf(style.variant)] : undefined} noneTextColor={kind === KINDS.card ? onToken(cardDefaultFillOf(style.variant), p) : undefined} noneIcon={kind === KINDS.card ? "restart_alt" : undefined} noneLabel={kind === KINDS.card ? t("defaultColor", lang) : undefined} />
-      {kind === KINDS.listItem && (
+      <TokenChips value={fill} onChange={(value) => dispatch({ kind: "set-fill", value })} p={p} none={kind === COMPONENT_KIND.card} noneOn={kind === COMPONENT_KIND.card && !style.fill} onNone={() => dispatch({ kind: "set-fill", value: undefined })} noneColor={kind === COMPONENT_KIND.card ? p[cardDefaultFillOf(style.variant)] : undefined} noneTextColor={kind === COMPONENT_KIND.card ? onToken(cardDefaultFillOf(style.variant), p) : undefined} noneIcon={kind === COMPONENT_KIND.card ? "restart_alt" : undefined} noneLabel={kind === COMPONENT_KIND.card ? t("defaultColor", lang) : undefined} />
+      {kind === COMPONENT_KIND.listItem && (
         <>
           <div style={{ fontSize: 12, fontWeight: 600, color: p.onSurfaceVariant, margin: "10px 0 6px" }}>{t("iconBackground", lang)}</div>
           <TokenChips value={style.iconFill && style.iconFill !== "none" ? style.iconFill : "primaryContainer"} onChange={(iconFill) => dispatch({ kind: "set-icon-fill", value: iconFill })} p={p} none noneOn={style.iconFill === "none"} onNone={() => dispatch({ kind: "set-icon-fill", value: "none" })} />
@@ -861,21 +861,21 @@ function FillSection({ kind, p, style, dispatch }: { kind: Kind; p: Palette; sty
   );
 }
 
-function StateSection({ kind, p, state, dispatch }: { kind: Kind; p: Palette; state: ItemStateModel; dispatch: (command: ItemStateCommand) => void }) {
+function StateSection({ kind, p, state, dispatch }: { kind: ComponentKind; p: Palette; state: ItemStateModel; dispatch: (command: ItemStateCommand) => void }) {
   const lang = useLang();
   const spec = KIND_SPEC[kind];
-  if (!(spec.hasChecked || spec.hasValue || spec.hasWavy || spec.hasContained || kind === KINDS.listItem)) return null;
+  if (!(spec.hasChecked || spec.hasValue || spec.hasWavy || spec.hasContained || kind === COMPONENT_KIND.listItem)) return null;
   return (
     <Section id="state" icon="tune" title={t("state", lang)} p={p}>
       <div style={{ display: "flex", flexDirection: "column", gap: 14, padding: "2px 0" }}>
-        {kind === KINDS.listItem && <Toggle on={!!state.switch} onChange={(value) => dispatch({ kind: "set-switch", value })} p={p} icon="toggle_on" label={t("listSwitch", lang)} grow />}
-        {kind === KINDS.listItem && state.switch && <Toggle on={!!state.checked} onChange={(value) => dispatch({ kind: "set-checked", value })} p={p} icon="toggle_on" label={t("on", lang)} grow />}
-        {spec.hasChecked && <Toggle on={!!state.checked} onChange={(value) => dispatch({ kind: "set-checked", value })} p={p} icon={kind === KINDS.chip ? "check_circle" : kind === KINDS.box ? "drag_handle" : "toggle_on"} label={kind === KINDS.chip ? t("selected", lang) : kind === KINDS.box ? t("handle", lang) : t("on", lang)} grow />}
-        {kind === KINDS.switch && <Toggle on={!state.noCheck} onChange={(value) => dispatch({ kind: "set-no-check", value: !value })} p={p} icon="check" label={t("thumbCheck", lang)} grow />}
+        {kind === COMPONENT_KIND.listItem && <Toggle on={!!state.switch} onChange={(value) => dispatch({ kind: "set-switch", value })} p={p} icon="toggle_on" label={t("listSwitch", lang)} grow />}
+        {kind === COMPONENT_KIND.listItem && state.switch && <Toggle on={!!state.checked} onChange={(value) => dispatch({ kind: "set-checked", value })} p={p} icon="toggle_on" label={t("on", lang)} grow />}
+        {spec.hasChecked && <Toggle on={!!state.checked} onChange={(value) => dispatch({ kind: "set-checked", value })} p={p} icon={kind === COMPONENT_KIND.chip ? "check_circle" : kind === COMPONENT_KIND.box ? "drag_handle" : "toggle_on"} label={kind === COMPONENT_KIND.chip ? t("selected", lang) : kind === COMPONENT_KIND.box ? t("handle", lang) : t("on", lang)} grow />}
+        {kind === COMPONENT_KIND.switch && <Toggle on={!state.noCheck} onChange={(value) => dispatch({ kind: "set-no-check", value: !value })} p={p} icon="check" label={t("thumbCheck", lang)} grow />}
         {spec.hasContained && <Toggle on={!!state.contained} onChange={(value) => dispatch({ kind: "set-contained", value })} p={p} icon="circle" label={t("container", lang)} grow />}
         {spec.hasWavy && <Toggle on={!!state.wavy} onChange={(value) => dispatch({ kind: "set-wavy", value })} p={p} icon="airwave" label={t("wavy", lang)} grow />}
-        {spec.hasValue && kind !== KINDS.slider && <Toggle on={state.value !== undefined} onChange={(value) => dispatch({ kind: "set-value", value: value ? 60 : undefined })} p={p} icon="percent" label={t("determinate", lang)} grow />}
-        {spec.hasValue && (kind === KINDS.slider || state.value !== undefined) && <Slider icon="percent" value={state.value ?? 40} min={0} max={100} step={1} onChange={(value) => dispatch({ kind: "set-value", value })} p={p} unit="%" />}
+        {spec.hasValue && kind !== COMPONENT_KIND.slider && <Toggle on={state.value !== undefined} onChange={(value) => dispatch({ kind: "set-value", value: value ? 60 : undefined })} p={p} icon="percent" label={t("determinate", lang)} grow />}
+        {spec.hasValue && (kind === COMPONENT_KIND.slider || state.value !== undefined) && <Slider icon="percent" value={state.value ?? 40} min={0} max={100} step={1} onChange={(value) => dispatch({ kind: "set-value", value })} p={p} unit="%" />}
       </div>
     </Section>
   );
@@ -910,10 +910,10 @@ function RailSection({ model, p, dispatch }: { model: ItemRailModel; p: Palette;
   );
 }
 
-function GeometrySection({ kind, model, state, frameSize, p, dispatch }: { kind: Kind; model: ItemGeometryModel; state: ItemStateModel; frameSize: { w: number; h: number }; p: Palette; dispatch: (command: ItemGeometryCommand) => void }) {
+function GeometrySection({ kind, model, state, frameSize, p, dispatch }: { kind: ComponentKind; model: ItemGeometryModel; state: ItemStateModel; frameSize: { w: number; h: number }; p: Palette; dispatch: (command: ItemGeometryCommand) => void }) {
   const lang = useLang();
   const spec = KIND_SPEC[kind];
-  const hasRadius = kind === KINDS.bottomNav || kind === KINDS.navRail || kind === KINDS.topAppBar || kind === KINDS.card || kind === KINDS.image || kind === KINDS.camera || kind === KINDS.map || kind === KINDS.box;
+  const hasRadius = kind === COMPONENT_KIND.bottomNav || kind === COMPONENT_KIND.navRail || kind === COMPONENT_KIND.topAppBar || kind === COMPONENT_KIND.card || kind === COMPONENT_KIND.image || kind === COMPONENT_KIND.camera || kind === COMPONENT_KIND.map || kind === COMPONENT_KIND.box;
   if (!spec.size && !hasRadius) return null;
   const mapWidthPreset = (value: number) => value === PHONE_W ? frameSize.w : value === CONTENT_W ? contentWidth(frameSize.w) : value === HALF_W ? halfWidth(frameSize.w) : value;
   const mapHeightPreset = (value: number) => value === PHONE_H ? frameSize.h : value === PHONE_H / 2 ? frameSize.h / 2 : value;
@@ -922,14 +922,14 @@ function GeometrySection({ kind, model, state, frameSize, p, dispatch }: { kind:
   return (
     <Section id="size" icon="straighten" title={t("size", lang)} p={p}>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {spec.hasWavy && <Slider icon="line_weight" title={t("trackThickness", lang)} value={Math.min(state.trackThickness ?? TRACK_DEFAULT, kind === KINDS.circularProgress ? maxRingThickness(model.size ?? spec.w) : TRACK_MAX)} min={TRACK_MIN} max={kind === KINDS.circularProgress ? maxRingThickness(model.size ?? spec.w) : TRACK_MAX} step={1} onChange={(value) => dispatch({ kind: "set-track-thickness", value: value === TRACK_DEFAULT ? undefined : value })} p={p} />}
+        {spec.hasWavy && <Slider icon="line_weight" title={t("trackThickness", lang)} value={Math.min(state.trackThickness ?? TRACK_DEFAULT, kind === COMPONENT_KIND.circularProgress ? maxRingThickness(model.size ?? spec.w) : TRACK_MAX)} min={TRACK_MIN} max={kind === COMPONENT_KIND.circularProgress ? maxRingThickness(model.size ?? spec.w) : TRACK_MAX} step={1} onChange={(value) => dispatch({ kind: "set-track-thickness", value: value === TRACK_DEFAULT ? undefined : value })} p={p} />}
         {spec.size && (
           <>
-            <Slider icon={spec.size.icon} title={kind === KINDS.text ? t("fontSize", lang) : spec.size.icon === "width" ? t("width", lang) : t("size", lang)} value={model.size ?? spec.defSize ?? spec.w} min={spec.size.min} max={widthMax(spec.size.max)} step={spec.size.step} onChange={(value) => dispatch({ kind: "set-size", value })} p={p} unit={kind === KINDS.text ? "sp" : ""} />
+            <Slider icon={spec.size.icon} title={kind === COMPONENT_KIND.text ? t("fontSize", lang) : spec.size.icon === "width" ? t("width", lang) : t("size", lang)} value={model.size ?? spec.defSize ?? spec.w} min={spec.size.min} max={widthMax(spec.size.max)} step={spec.size.step} onChange={(value) => dispatch({ kind: "set-size", value })} p={p} unit={kind === COMPONENT_KIND.text ? "sp" : ""} />
             {spec.size.presets && (
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                {(kind === KINDS.button || kind === KINDS.switch) && <button onClick={() => dispatch({ kind: "set-size", value: undefined })} aria-pressed={model.size === undefined} className="m3-press" style={{ height: 28, padding: "0 12px", borderRadius: 14, border: "none", background: model.size === undefined ? p.secondaryContainer : p.surfaceContainerHigh, color: model.size === undefined ? p.onSecondaryContainer : p.onSurfaceVariant, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{t("autoWidth", lang)}</button>}
-                <SizePresets values={[...new Set([...(frameSize.w !== PHONE_W && spec.size.icon === "width" && spec.size.presets.includes(CONTENT_W) ? [CONTENT_W] : []), ...spec.size.presets.map(mapWidthPreset)])].sort((a, b) => a - b)} value={model.size ?? spec.defSize ?? spec.w} min={spec.size.min} max={widthMax(spec.size.max)} onChange={(value) => dispatch({ kind: "set-size", value })} p={p} labelOf={kind === KINDS.text ? undefined : (value) => widthPresetLabel(value, frameSize.w)} />
+                {(kind === COMPONENT_KIND.button || kind === COMPONENT_KIND.switch) && <button onClick={() => dispatch({ kind: "set-size", value: undefined })} aria-pressed={model.size === undefined} className="m3-press" style={{ height: 28, padding: "0 12px", borderRadius: 14, border: "none", background: model.size === undefined ? p.secondaryContainer : p.surfaceContainerHigh, color: model.size === undefined ? p.onSecondaryContainer : p.onSurfaceVariant, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{t("autoWidth", lang)}</button>}
+                <SizePresets values={[...new Set([...(frameSize.w !== PHONE_W && spec.size.icon === "width" && spec.size.presets.includes(CONTENT_W) ? [CONTENT_W] : []), ...spec.size.presets.map(mapWidthPreset)])].sort((a, b) => a - b)} value={model.size ?? spec.defSize ?? spec.w} min={spec.size.min} max={widthMax(spec.size.max)} onChange={(value) => dispatch({ kind: "set-size", value })} p={p} labelOf={kind === COMPONENT_KIND.text ? undefined : (value) => widthPresetLabel(value, frameSize.w)} />
               </div>
             )}
           </>
@@ -940,9 +940,9 @@ function GeometrySection({ kind, model, state, frameSize, p, dispatch }: { kind:
             {spec.size2.presets && <SizePresets values={[...new Set(spec.size2.presets.map(mapHeightPreset))]} value={model.size2 ?? spec.h} min={spec.size2.min} max={heightMax(spec.size2.max)} onChange={(value) => dispatch({ kind: "set-size2", value })} p={p} labelOf={(value) => heightPresetLabel(value, frameSize.h)} />}
           </>
         )}
-        {hasRadius && kind === KINDS.image && <Slider icon="rounded_corner" title={t("cornerRadius", lang)} value={model.radiusTop ?? spec.radius} min={0} max={48} step={1} onChange={(value) => dispatch({ kind: "set-radius", side: "top", value })} p={p} />}
-        {hasRadius && (kind === KINDS.card || kind === KINDS.box) && (() => {
-          const isBox = kind === KINDS.box;
+        {hasRadius && kind === COMPONENT_KIND.image && <Slider icon="rounded_corner" title={t("cornerRadius", lang)} value={model.radiusTop ?? spec.radius} min={0} max={48} step={1} onChange={(value) => dispatch({ kind: "set-radius", side: "top", value })} p={p} />}
+        {hasRadius && (kind === COMPONENT_KIND.card || kind === COMPONENT_KIND.box) && (() => {
+          const isBox = kind === COMPONENT_KIND.box;
           const top = model.radiusTop ?? (isBox ? 0 : scaleR(spec.radius));
           const bottom = isBox ? model.radiusBottom ?? 0 : top;
           const corners = model.corners ?? (isBox && top !== bottom ? { tl: top, tr: top, bl: bottom, br: bottom } : undefined);
@@ -954,10 +954,10 @@ function GeometrySection({ kind, model, state, frameSize, p, dispatch }: { kind:
             </>
           );
         })()}
-        {hasRadius && (kind === KINDS.bottomNav || kind === KINDS.navRail || kind === KINDS.topAppBar) && (
+        {hasRadius && (kind === COMPONENT_KIND.bottomNav || kind === COMPONENT_KIND.navRail || kind === COMPONENT_KIND.topAppBar) && (
           <>
-            <Slider iconNode={<CornerIcon side={kind === KINDS.navRail ? "left" : "top"} />} title={t(kind === KINDS.navRail ? "cornerLeft" : "cornerTop", lang)} value={model.radiusTop ?? 0} min={0} max={40} step={1} onChange={(value) => dispatch({ kind: "set-radius", side: "top", value })} p={p} />
-            <Slider iconNode={<CornerIcon side={kind === KINDS.navRail ? "right" : "bottom"} />} title={t(kind === KINDS.navRail ? "cornerRight" : "cornerBottom", lang)} value={model.radiusBottom ?? 0} min={0} max={40} step={1} onChange={(value) => dispatch({ kind: "set-radius", side: "bottom", value })} p={p} />
+            <Slider iconNode={<CornerIcon side={kind === COMPONENT_KIND.navRail ? "left" : "top"} />} title={t(kind === COMPONENT_KIND.navRail ? "cornerLeft" : "cornerTop", lang)} value={model.radiusTop ?? 0} min={0} max={40} step={1} onChange={(value) => dispatch({ kind: "set-radius", side: "top", value })} p={p} />
+            <Slider iconNode={<CornerIcon side={kind === COMPONENT_KIND.navRail ? "right" : "bottom"} />} title={t(kind === COMPONENT_KIND.navRail ? "cornerRight" : "cornerBottom", lang)} value={model.radiusBottom ?? 0} min={0} max={40} step={1} onChange={(value) => dispatch({ kind: "set-radius", side: "bottom", value })} p={p} />
           </>
         )}
       </div>
@@ -965,7 +965,7 @@ function GeometrySection({ kind, model, state, frameSize, p, dispatch }: { kind:
   );
 }
 
-function NavigationSection({ kind, model, p, dispatch }: { kind: Kind; model: ItemNavigationModel; p: Palette; dispatch: (command: ItemNavigationCommand) => void }) {
+function NavigationSection({ kind, model, p, dispatch }: { kind: ComponentKind; model: ItemNavigationModel; p: Palette; dispatch: (command: ItemNavigationCommand) => void }) {
   const lang = useLang();
   type SlotKey = ItemNavigationModel["slots"][number]["key"];
   const [actionSlot, setActionSlot] = useState<SlotKey | null>(null);
@@ -977,7 +977,7 @@ function NavigationSection({ kind, model, p, dispatch }: { kind: Kind; model: It
     <Section id="action" icon="ads_click" title={t("tapTo", lang)} p={p}>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {slots.length > 1 && (
-          kind === KINDS.tabs ? (
+          kind === COMPONENT_KIND.tabs ? (
             <div role="radiogroup" aria-label={t("tapTo", lang)} style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {slots.map((slot) => {
                 const selected = slot.key === activeKey;
@@ -994,7 +994,7 @@ function NavigationSection({ kind, model, p, dispatch }: { kind: Kind; model: It
   );
 }
 
-function BehaviorSection({ kind, model, ai, p, dispatch }: { kind: Kind; model: ItemBehaviorModel; ai: AiCapability; p: Palette; dispatch: (command: ItemBehaviorCommand) => void }) {
+function BehaviorSection({ kind, model, ai, p, dispatch }: { kind: ComponentKind; model: ItemBehaviorModel; ai: AiCapability; p: Palette; dispatch: (command: ItemBehaviorCommand) => void }) {
   const lang = useLang();
   return (
     <Section id="note" icon="bolt" title={t("behavior", lang)} p={p}>
@@ -1005,7 +1005,7 @@ function BehaviorSection({ kind, model, ai, p, dispatch }: { kind: Kind; model: 
         p={p}
         value={model.note}
         onChange={(value) => dispatch({ kind: "set-note", value })}
-        placeholder={kind === KINDS.button || kind === KINDS.fab || kind === KINDS.iconButton || kind === KINDS.extendedFab ? t("whenPressed", lang) : t("whatItDoes", lang)}
+        placeholder={kind === COMPONENT_KIND.button || kind === COMPONENT_KIND.fab || kind === COMPONENT_KIND.iconButton || kind === COMPONENT_KIND.extendedFab ? t("whenPressed", lang) : t("whatItDoes", lang)}
       />
     </Section>
   );
@@ -1014,7 +1014,7 @@ function BehaviorSection({ kind, model, ai, p, dispatch }: { kind: Kind; model: 
 function NormalContentSections({ model, p, dispatch }: { model: ItemInspectorModel; p: Palette; dispatch: (command: ItemCommand) => void }) {
   const spec = KIND_SPEC[model.kind];
   const { text, tabs, media, icons, style, navigation } = model.sections;
-  const automaticTextColor = model.kind === KINDS.card && media && !media.noImage && media.imagePos === "background" ? (media.src ? "#ffffff" : p.onPrimaryContainer) : style.fill ? onToken(style.fill, p) : p.onSurface;
+  const automaticTextColor = model.kind === COMPONENT_KIND.card && media && !media.noImage && media.imagePos === "background" ? (media.src ? "#ffffff" : p.onPrimaryContainer) : style.fill ? onToken(style.fill, p) : p.onSurface;
   return (
     <>
       {(spec.hasLabel || spec.hasSupporting) && <ItemTextSection kind={model.kind} model={text} p={p} dispatch={dispatch} automaticTextColor={automaticTextColor} />}

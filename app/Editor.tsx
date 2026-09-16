@@ -49,10 +49,10 @@ import {
   Group,
   groupBounds,
   Item,
-  Kind,
+  COMPONENT_KIND,
+  ComponentKind,
   KIND_ORDER,
   KIND_SPEC,
-  KINDS,
   collapseFree,
   layoutOf,
   lerp,
@@ -160,6 +160,15 @@ type Snap = { groupId: string; index: number; pull: number };
 type Guide = { x?: number; y?: number; gx?: number; gy?: number };
 const GUIDE_PX = 7;
 
+/** Pointer-gesture state belongs to the editor interaction boundary. It is not
+ * a component kind and must not be folded into the document model's union. */
+const GESTURE_KIND = {
+  pan: "pan",
+  marquee: "marquee",
+  frame: "frame",
+  group: "group",
+} as const;
+
 /** Material's 4dp grid: a coordinate rounded to it, measured from the screen's corner */
 const GRID = 4;
 const onGrid = (v: number, origin: number) => origin + Math.round((v - origin) / GRID) * GRID;
@@ -182,9 +191,9 @@ type DragState = {
 };
 
 type Gesture =
-  | { kind: "pan"; sx: number; sy: number; vx: number; vy: number }
+  | { kind: typeof GESTURE_KIND.pan; sx: number; sy: number; vx: number; vy: number }
   | {
-      kind: "marquee";
+      kind: typeof GESTURE_KIND.marquee;
       x0: number;
       y0: number;
       x1: number;
@@ -192,7 +201,7 @@ type Gesture =
       moved: boolean;
     }
   | {
-      kind: "frame";
+      kind: typeof GESTURE_KIND.frame;
       id: string;
       sx: number;
       sy: number;
@@ -201,7 +210,7 @@ type Gesture =
       groups: { id: string; x: number; y: number }[];
       moved: boolean;
     }
-  | { kind: "group"; id: string; sx: number; sy: number; gx: number; gy: number; moved: boolean; overBin: boolean; guide?: Guide | null };
+  | { kind: typeof GESTURE_KIND.group; id: string; sx: number; sy: number; gx: number; gy: number; moved: boolean; overBin: boolean; guide?: Guide | null };
 
 /** everything in a document apart from its screens and parts */
 type DocMeta = Omit<Doc, "groups" | "frames">;
@@ -233,7 +242,7 @@ const SEED_FRAMES: Frame[] = [{ id: "seedF1", name: "Home", x: 0, y: 0 }];
 function migrateGroups(groups: Group[], frames: Frame[]): Group[] {
   const oldNavH = KIND_SPEC.bottomNav.h - NAV_BAR_H;
   return groups.map((g) => {
-    if (g.items.length !== 1 || g.items[0].kind !== KINDS.bottomNav) return g;
+    if (g.items.length !== 1 || g.items[0].kind !== COMPONENT_KIND.bottomNav) return g;
     const f = frames.find((fr) => {
       const r = frameRect(fr);
       return g.x >= r.l - 1 && g.x <= r.r && g.y === r.b - oldNavH;
@@ -250,7 +259,7 @@ const seed = (lang: Lang = getLang()): Group[] => {
   const text = SEED_TEXT[lang];
   let n = 0;
   const sid = () => `seed${++n}`;
-  const mk = (k: Kind) => ({ ...makeItem(k), id: sid() });
+  const mk = (k: ComponentKind) => ({ ...makeItem(k), id: sid() });
   const bar = mk("topAppBar");
   const a = mk("button");
   const b = mk("button");
@@ -286,7 +295,7 @@ const seed = (lang: Lang = getLang()): Group[] => {
 /** The phone version starts with buttons only: that is all it edits. */
 const mobileSeed = (lang: Lang = getLang()): Group[] => {
   const text = SEED_TEXT[lang];
-  const mk = (k: Kind) => makeItem(k);
+  const mk = (k: ComponentKind) => makeItem(k);
   const a = mk("button");
   const b = mk("button");
   const c = mk("button");
@@ -438,7 +447,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   const [layersFrameId, setLayersFrameId] = useState<string | null>(null);
   const [rightW, setRightW] = useState(320);
   const [rightTab, setRightTab] = useState<"edit" | "prompt">("edit");
-  const [favorites, setFavorites] = useState<Kind[]>([]);
+  const [favorites, setFavorites] = useState<ComponentKind[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedFrameId, setSelectedFrameId] = useState<string | null>(null);
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
@@ -1139,7 +1148,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
 
   const startPan = (clientX: number, clientY: number) => {
     const g: Gesture = {
-      kind: "pan",
+      kind: GESTURE_KIND.pan,
       sx: clientX,
       sy: clientY,
       vx: viewRef.current.x,
@@ -1172,7 +1181,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
       setRightTab("edit");
       /* a locked group stays selectable, but dragging it does nothing */
       if (g.locked) return;
-      const gg: Gesture = { kind: "group", id: g.id, sx: e.clientX, sy: e.clientY, gx: g.x, gy: g.y, moved: false, overBin: false };
+      const gg: Gesture = { kind: GESTURE_KIND.group, id: g.id, sx: e.clientX, sy: e.clientY, gx: g.x, gy: g.y, moved: false, overBin: false };
       gestureRef.current = gg;
       setGesture(gg);
       return;
@@ -1211,7 +1220,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
     setDrag({ ...d });
   };
 
-  const onPartPointerDown = (e: React.PointerEvent, kind: Kind) => {
+  const onPartPointerDown = (e: React.PointerEvent, kind: ComponentKind) => {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
@@ -1515,7 +1524,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
     if (e.button !== 0) return;
     const pt = toWorld(e.clientX, e.clientY);
     const g: Gesture = {
-      kind: "marquee",
+      kind: GESTURE_KIND.marquee,
       x0: pt.x,
       y0: pt.y,
       x1: pt.x,
@@ -1559,7 +1568,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
       )
       .map((g) => ({ id: g.id, x: g.x, y: g.y }));
     const g: Gesture = {
-      kind: "frame",
+      kind: GESTURE_KIND.frame,
       id: f.id,
       sx: e.clientX,
       sy: e.clientY,
@@ -1578,7 +1587,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
     const move = (e: PointerEvent) => {
       const g = gestureRef.current;
       if (!g) return;
-      if (g.kind === "pan") {
+      if (g.kind === GESTURE_KIND.pan) {
         setView((v) => ({
           ...v,
           x: g.vx + (e.clientX - g.sx),
@@ -1586,7 +1595,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
         }));
         return;
       }
-      if (g.kind === "group") {
+      if (g.kind === GESTURE_KIND.group) {
         const z = viewRef.current.z;
         const dx = (e.clientX - g.sx) / z;
         const dy = (e.clientY - g.sy) / z;
@@ -1619,7 +1628,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
         setGroups((gs) => gs.map((x) => (x.id === g.id ? placed : x)));
         return;
       }
-      if (g.kind === "frame") {
+      if (g.kind === GESTURE_KIND.frame) {
         const z = viewRef.current.z;
         const dx = (e.clientX - g.sx) / z;
         const dy = (e.clientY - g.sy) / z;
@@ -1672,7 +1681,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
       gestureRef.current = null;
       setGesture(null);
       // a group dragged onto the parts panel is deleted, like a single part
-      if (g?.kind === "group" && g.moved && inBin(e.clientX)) {
+      if (g?.kind === GESTURE_KIND.group && g.moved && inBin(e.clientX)) {
         setGroups((gs) => gs.filter((x) => x.id !== g.id));
         setSelectedIds([]);
       }
@@ -1837,7 +1846,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
     };
     /* a copied modal rail starts collapsed and standard: a screen shows one modal rail, and
        the copy sits inward of the edge the original remembered */
-    if (copy.kind === KINDS.navRail && copy.railModal) {
+    if (copy.kind === COMPONENT_KIND.navRail && copy.railModal) {
       copy.railModal = false;
       copy.railExpanded = false;
       delete copy[railExpansionSide];
@@ -3483,8 +3492,8 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   };
 
   const handMode = !isMobile && (mode === "hand" || spaceHeld);
-  const panning = gesture?.kind === "pan";
-  const marquee = gesture?.kind === "marquee" && gesture.moved ? gesture : null;
+  const panning = gesture?.kind === GESTURE_KIND.pan;
+  const marquee = gesture?.kind === GESTURE_KIND.marquee && gesture.moved ? gesture : null;
   const canvasBg = frame === "phone" ? p.surfaceContainerLow : "#ffffff";
 
   const panelStyle: React.CSSProperties = {
@@ -3497,8 +3506,8 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   };
 
   const showRight = rightOpen && !isMobile;
-  const overBin = (!!drag?.active && drag.overBin) || (gesture?.kind === "group" && gesture.overBin);
-  const guide = drag?.active ? drag.guide : gesture?.kind === "group" && gesture.moved ? (gesture.guide ?? null) : null;
+  const overBin = (!!drag?.active && drag.overBin) || (gesture?.kind === GESTURE_KIND.group && gesture.overBin);
+  const guide = drag?.active ? drag.guide : gesture?.kind === GESTURE_KIND.group && gesture.moved ? (gesture.guide ?? null) : null;
   const visibleWorld = (() => {
     const r = canvasRef.current?.getBoundingClientRect();
     return {
@@ -3552,9 +3561,9 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
                   boxSizing: "border-box",
                   border:
                     it.variant === "outlined" &&
-                    (it.kind === KINDS.button ||
-                      it.kind === KINDS.chip ||
-                      it.kind === KINDS.extendedFab)
+                    (it.kind === COMPONENT_KIND.button ||
+                      it.kind === COMPONENT_KIND.chip ||
+                      it.kind === COMPONENT_KIND.extendedFab)
                       ? "1px solid transparent"
                       : "none",
                 }}

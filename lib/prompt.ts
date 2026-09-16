@@ -1,7 +1,7 @@
 import { KIND_TEXT, Lang, SWIPE_TEXT, TRANSITION_TEXT, getLang } from "./i18n";
 import { constrainModalRails } from "./rail";
-import { KINDS } from "./kind";
 import {
+  COMPONENT_KIND,
   CONTENT_W,
   Place,
   Platform,
@@ -12,7 +12,7 @@ import {
   Frame,
   Group,
   Item,
-  Kind,
+  ComponentKind,
   Palette,
   PHONE_W,
   SWIPE_DIRS,
@@ -149,86 +149,86 @@ function itemJa(it: Item): string {
   const v = VARIANT_TEXT.ja[it.variant];
   const noun = KIND_TEXT.ja[it.kind]?.noun ?? it.kind;
   switch (it.kind) {
-    case KINDS.button:
+    case COMPONENT_KIND.button:
       return `${hasText(it.label) ? q(it.label) : "ラベルなし"}の${v}ボタン${it.icon ? `（${it.icon} アイコン付き）` : ""}${it.size ? `（幅 ${it.size}dp）` : ""}`;
-    case KINDS.iconButton:
+    case COMPONENT_KIND.iconButton:
       return `${it.icon ?? "空"} アイコンの${v}アイコンボタン`;
-    case KINDS.fab:
+    case COMPONENT_KIND.fab:
       return `${it.icon ?? "空"} アイコンの${v} FAB${it.size && it.size >= 96 ? "（大サイズ）" : it.size && it.size <= 40 ? "（小サイズ）" : ""}`;
-    case KINDS.extendedFab:
+    case COMPONENT_KIND.extendedFab:
       return `${q(it.label)}${it.icon ? `と ${it.icon} アイコン` : ""}の拡張 FAB（${v}）`;
-    case KINDS.chip:
+    case COMPONENT_KIND.chip:
       return `${q(it.label)}のチップ${it.checked ? "（選択状態）" : ""}${it.icon && !it.checked ? `（${it.icon} アイコン付き）` : ""}`;
-    case KINDS.topAppBar:
+    case COMPONENT_KIND.topAppBar:
       return `タイトル${q(it.label)}のトップアプリバー${it.icon ? `。左に ${it.icon}` : ""}${it.icon2 ? `、右に ${it.icon2}` : ""}${it.icon || it.icon2 ? " のアイコンボタン" : ""}`;
-    case KINDS.bottomNav: {
+    case COMPONENT_KIND.bottomNav: {
       const tabs = (it.tabs ?? []).map((t) => `${q(t.label || "ラベルなし")}(${t.icon || "アイコンなし"})`);
       return `${tabs.length}項目のナビゲーションバー（${tabs.join("、")}。${selectedText(it, "ja")}）`;
     }
-    case KINDS.navRail: {
+    case COMPONENT_KIND.navRail: {
       const tabs = (it.tabs ?? []).map((t) => `${q(t.label || "ラベルなし")}(${t.icon || "アイコンなし"})`);
       return `${tabs.length}項目のナビゲーションレール（${tabs.join("、")}。${selectedText(it, "ja")}）${railStateText(it, "ja")}`;
     }
-    case KINDS.searchBar:
+    case COMPONENT_KIND.searchBar:
       return `プレースホルダー${q(it.label)}の検索バー${it.icon2 ? `（右端に ${it.icon2} アイコン）` : ""}`;
-    case KINDS.card: {
+    case COMPONENT_KIND.card: {
       const style = it.variant === "elevated" ? "エレベーテッド" : it.variant === "outlined" ? "アウトライン" : "塗りつぶし";
       return `${style}カード${it.size2 ? `（高さ ${it.size2}dp）` : ""}${cardLook(it, "ja")}。${cardImage(it, "ja")}見出し${q(it.label)}${hasText(it.supporting) ? `、本文${q(it.supporting!)}` : ""}${cardText(it, "ja")}`;
     }
-    case KINDS.listItem:
+    case COMPONENT_KIND.listItem:
       return `${q(it.label)}${hasText(it.supporting) ? `（サブテキスト${q(it.supporting!)}）` : ""}${it.icon ? `、先頭に ${it.icon} アイコン${it.iconFill === "none" ? "（背景なし）" : it.iconFill ? `（背景 ${it.iconFill}）` : ""}` : ""}${it.switch ? `、末尾にスイッチ（初期状態${it.checked ? "オン" : "オフ"}）` : it.icon2 ? `、末尾に ${it.icon2}` : ""}${it.fill && it.fill !== "surfaceContainerLow" ? `、背景は ${it.fill}` : ""}`;
-    case KINDS.dialog:
+    case COMPONENT_KIND.dialog:
       return `見出し${q(it.label)}${hasText(it.supporting) ? `、本文${q(it.supporting!)}` : ""}${it.icon ? `、${it.icon} アイコン付き` : ""}のダイアログ（キャンセル／OK のテキストボタン）`;
-    case KINDS.snackbar:
+    case COMPONENT_KIND.snackbar:
       return `${q(it.label)}のスナックバー${hasText(it.supporting) ? `（${q(it.supporting!)}のアクション付き）` : ""}`;
-    case KINDS.textField:
+    case COMPONENT_KIND.textField:
       return `ラベル${q(it.label)}の${it.variant === "filled" ? "塗りつぶし" : "アウトライン"}テキスト入力${it.icon ? `（先頭に ${it.icon} アイコン）` : ""}${hasText(it.supporting) ? `。補助テキストは${q(it.supporting!)}` : ""}`;
-    case KINDS.select: {
+    case COMPONENT_KIND.select: {
       const opts = (it.tabs ?? []).map((t) => q(t.label || "ラベルなし"));
       const initial = it.selected !== undefined && it.tabs?.[it.selected] ? `、初期値は${q(it.tabs[it.selected].label)}` : "、初期値は未選択";
       return `ラベル${q(it.label)}の${it.variant === "filled" ? "塗りつぶし" : "アウトライン"}ドロップダウン（タップでメニューを開いて 1 つ選ぶ。選択肢は${opts.join("、")}${initial}）${it.icon ? `（先頭に ${it.icon} アイコン）` : ""}${hasText(it.supporting) ? `。補助テキストは${q(it.supporting!)}` : ""}`;
     }
-    case KINDS.switch:
+    case COMPONENT_KIND.switch:
       return `${q(it.label)}のスイッチ（初期状態は${it.checked ? "オン" : "オフ"}${it.noCheck ? "、オン時のハンドルにチェックアイコンなし" : ""}）`;
-    case KINDS.checkbox:
+    case COMPONENT_KIND.checkbox:
       return `${q(it.label)}のチェックボックス（初期状態は${it.checked ? "チェック済み" : "未チェック"}）`;
-    case KINDS.slider:
+    case COMPONENT_KIND.slider:
       return `スライダー（初期値 ${it.value ?? 40}%）`;
-    case KINDS.text:
+    case COMPONENT_KIND.text:
       return `${it.bold ? "太字の" : ""}テキスト${q(it.label)}（${it.size ?? 28}sp）`;
-    case KINDS.image:
+    case COMPONENT_KIND.image:
       return `${it.size ?? 200}dp 角の画像${imageSrc(it) ? `（${imageSrc(it)} の画像を表示）` : it.src ? "（指定の画像を表示）" : "プレースホルダー"}`;
-    case KINDS.camera:
+    case COMPONENT_KIND.camera:
       return `${viewSize(it, 4 / 3)} のカメラプレビュー`;
-    case KINDS.map:
+    case COMPONENT_KIND.map:
       return `${viewSize(it, 3 / 4)} の地図`;
-    case KINDS.divider:
+    case COMPONENT_KIND.divider:
       return "区切り線";
-    case KINDS.box:
+    case COMPONENT_KIND.box:
       return `${it.size ?? PHONE_W}×${it.size2 ?? 220}dp の${it.checked ? "ボトムシート（上部にドラッグハンドル。" : "ボックス（"}背景 ${it.fill ?? "surfaceContainerLow"}、${boxCorners(it, "ja")}）`;
-    case KINDS.loadingIndicator:
+    case COMPONENT_KIND.loadingIndicator:
       return `M3 Expressive の形が変化するローディングインジケータ${it.contained ? "（コンテナ付き）" : ""}`;
-    case KINDS.linearProgress:
+    case COMPONENT_KIND.linearProgress:
       return `${it.wavy ? "波形の" : ""}リニアプログレス（${it.value === undefined ? "不確定" : `${it.value}%`}${progressThickness(it) !== 4 ? `、トラックの太さ ${progressThickness(it)}dp` : ""}）`;
-    case KINDS.circularProgress:
+    case COMPONENT_KIND.circularProgress:
       return `${it.wavy ? "波形の" : ""}サーキュラープログレス（${it.value === undefined ? "不確定" : `${it.value}%`}${progressThickness(it) !== 4 ? `、トラックの太さ ${progressThickness(it)}dp` : ""}）`;
-    case KINDS.splitButton:
+    case COMPONENT_KIND.splitButton:
       return `${q(it.label)}${it.icon ? `（${it.icon} アイコン付き）` : ""}の${v}スプリットボタン（右側にメニューを開く矢印のセグメント）`;
-    case KINDS.fabMenu: {
+    case COMPONENT_KIND.fabMenu: {
       const items = (it.tabs ?? []).map((t) => `${q(t.label || "ラベルなし")}(${t.icon || "アイコンなし"})`);
       return `${v} FAB から開く FAB メニュー（開いた状態で描き、上に ${items.join("、")} の ${items.length} 項目が縦に並ぶ）`;
     }
-    case KINDS.toolbar: {
+    case COMPONENT_KIND.toolbar: {
       const icons = (it.tabs ?? []).map((t) => t.icon || "空").join("・");
       return `${it.variant === "filled" ? "ビブラント（primaryContainer）" : "スタンダード"}のフローティングツールバー（${icons} のアイコンボタン）`;
     }
-    case KINDS.tabs: {
+    case COMPONENT_KIND.tabs: {
       const labels = (it.tabs ?? []).map((t) => q(t.label || "ラベルなし"));
       return `${labels.join("、")}の ${labels.length} つのタブ（${selectedText(it, "ja")}${isScrollableTabs(it) ? "、横にスクロールするタブ" : ""}）`;
     }
-    case KINDS.radio:
+    case COMPONENT_KIND.radio:
       return `${q(it.label)}のラジオボタン（初期状態は${it.checked ? "選択" : "未選択"}）`;
-    case KINDS.badge:
+    case COMPONENT_KIND.badge:
       return hasText(it.label) ? `${q(it.label)}と表示するバッジ` : "小さな点のバッジ";
     default:
       return noun;
@@ -240,86 +240,86 @@ function itemEn(it: Item): string {
   const v = VARIANT_TEXT.en[it.variant];
   const noun = KIND_TEXT.en[it.kind]?.noun ?? it.kind;
   switch (it.kind) {
-    case KINDS.button:
+    case COMPONENT_KIND.button:
       return `a ${v} button ${hasText(it.label) ? q(it.label) : "with no label"}${it.icon ? ` with a ${it.icon} icon` : ""}${it.size ? ` (${it.size}dp wide)` : ""}`;
-    case KINDS.iconButton:
+    case COMPONENT_KIND.iconButton:
       return `a ${v} icon button with the ${it.icon ?? "empty"} icon`;
-    case KINDS.fab:
+    case COMPONENT_KIND.fab:
       return `a ${it.size && it.size >= 96 ? "large " : it.size && it.size <= 40 ? "small " : ""}${v} FAB with the ${it.icon ?? "empty"} icon`;
-    case KINDS.extendedFab:
+    case COMPONENT_KIND.extendedFab:
       return `a ${v} extended FAB ${q(it.label)}${it.icon ? ` with a ${it.icon} icon` : ""}`;
-    case KINDS.chip:
+    case COMPONENT_KIND.chip:
       return `a chip ${q(it.label)}${it.checked ? " (selected)" : ""}${it.icon && !it.checked ? ` with a ${it.icon} icon` : ""}`;
-    case KINDS.topAppBar:
+    case COMPONENT_KIND.topAppBar:
       return `a top app bar titled ${q(it.label)}${it.icon ? ` with a ${it.icon} icon button on the left` : ""}${it.icon2 ? `${it.icon ? " and" : " with"} ${it.icon2} on the right` : ""}`;
-    case KINDS.bottomNav: {
+    case COMPONENT_KIND.bottomNav: {
       const tabs = (it.tabs ?? []).map((t) => `${q(t.label || "unlabeled")} (${t.icon || "no icon"})`);
       return `a navigation bar with ${tabs.length} destinations: ${tabs.join(", ")}; ${selectedText(it, "en")}`;
     }
-    case KINDS.navRail: {
+    case COMPONENT_KIND.navRail: {
       const tabs = (it.tabs ?? []).map((t) => `${q(t.label || "unlabeled")} (${t.icon || "no icon"})`);
       return `a navigation rail with ${tabs.length} destinations: ${tabs.join(", ")}; ${selectedText(it, "en")}${railStateText(it, "en")}`;
     }
-    case KINDS.searchBar:
+    case COMPONENT_KIND.searchBar:
       return `a search bar with the placeholder ${q(it.label)}${it.icon2 ? ` and a ${it.icon2} icon at the end` : ""}`;
-    case KINDS.card: {
+    case COMPONENT_KIND.card: {
       const style = it.variant === "elevated" ? "an elevated" : it.variant === "outlined" ? "an outlined" : "a filled";
       return `${style} card${it.size2 ? ` (${it.size2}dp tall)` : ""}${cardLook(it, "en")} ${cardImage(it, "en") || "with "}the headline ${q(it.label)}${hasText(it.supporting) ? ` and the body ${q(it.supporting!)}` : ""}${cardText(it, "en")}`;
     }
-    case KINDS.listItem:
+    case COMPONENT_KIND.listItem:
       return `${q(it.label)}${hasText(it.supporting) ? ` with supporting text ${q(it.supporting!)}` : ""}${it.icon ? `, a leading ${it.icon} icon${it.iconFill === "none" ? " (no background circle)" : it.iconFill ? ` (on a ${it.iconFill} circle)` : ""}` : ""}${it.switch ? `, a trailing switch (initially ${it.checked ? "on" : "off"})` : it.icon2 ? `, a trailing ${it.icon2} icon` : ""}${it.fill && it.fill !== "surfaceContainerLow" ? `, on a ${it.fill} background` : ""}`;
-    case KINDS.dialog:
+    case COMPONENT_KIND.dialog:
       return `a dialog headed ${q(it.label)}${hasText(it.supporting) ? ` with the body ${q(it.supporting!)}` : ""}${it.icon ? ` and a ${it.icon} icon` : ""}, with Cancel and OK text buttons`;
-    case KINDS.snackbar:
+    case COMPONENT_KIND.snackbar:
       return `a snackbar ${q(it.label)}${hasText(it.supporting) ? ` with a ${q(it.supporting!)} action` : ""}`;
-    case KINDS.textField:
+    case COMPONENT_KIND.textField:
       return `${it.variant === "filled" ? "a filled" : "an outlined"} text field labeled ${q(it.label)}${it.icon ? ` with a leading ${it.icon} icon` : ""}${hasText(it.supporting) ? `; supporting text ${q(it.supporting!)}` : ""}`;
-    case KINDS.select: {
+    case COMPONENT_KIND.select: {
       const opts = (it.tabs ?? []).map((t) => q(t.label || "unlabeled"));
       const initial = it.selected !== undefined && it.tabs?.[it.selected] ? `, initially ${q(it.tabs[it.selected].label)}` : ", initially none";
       return `${it.variant === "filled" ? "a filled" : "an outlined"} dropdown labeled ${q(it.label)} that opens a menu to pick one option (options ${opts.join(", ")}${initial})${it.icon ? `, with a leading ${it.icon} icon` : ""}${hasText(it.supporting) ? `; supporting text ${q(it.supporting!)}` : ""}`;
     }
-    case KINDS.switch:
+    case COMPONENT_KIND.switch:
       return `a switch ${q(it.label)} (initially ${it.checked ? "on" : "off"}${it.noCheck ? "; no check icon on the handle when on" : ""})`;
-    case KINDS.checkbox:
+    case COMPONENT_KIND.checkbox:
       return `a checkbox ${q(it.label)} (initially ${it.checked ? "checked" : "unchecked"})`;
-    case KINDS.slider:
+    case COMPONENT_KIND.slider:
       return `a slider (initial value ${it.value ?? 40}%)`;
-    case KINDS.text:
+    case COMPONENT_KIND.text:
       return `${it.bold ? "bold " : ""}text ${q(it.label)} at ${it.size ?? 28}sp`;
-    case KINDS.image:
+    case COMPONENT_KIND.image:
       return `a ${it.size ?? 200}dp square image${imageSrc(it) ? ` (load it from ${imageSrc(it)})` : it.src ? " (use the provided image)" : " placeholder"}`;
-    case KINDS.camera:
+    case COMPONENT_KIND.camera:
       return `a ${viewSize(it, 4 / 3)} camera preview`;
-    case KINDS.map:
+    case COMPONENT_KIND.map:
       return `a ${viewSize(it, 3 / 4)} map`;
-    case KINDS.divider:
+    case COMPONENT_KIND.divider:
       return "a divider";
-    case KINDS.box:
+    case COMPONENT_KIND.box:
       return `a ${it.size ?? PHONE_W}×${it.size2 ?? 220}dp ${it.checked ? "bottom sheet with a drag handle at the top" : "box"} (background ${it.fill ?? "surfaceContainerLow"}, ${boxCorners(it, "en")})`;
-    case KINDS.loadingIndicator:
+    case COMPONENT_KIND.loadingIndicator:
       return `the M3 Expressive shape-morphing loading indicator${it.contained ? " (contained)" : ""}`;
-    case KINDS.linearProgress:
+    case COMPONENT_KIND.linearProgress:
       return `a ${it.wavy ? "wavy " : ""}linear progress indicator (${it.value === undefined ? "indeterminate" : `${it.value}%`}${progressThickness(it) !== 4 ? `, ${progressThickness(it)}dp track thickness` : ""})`;
-    case KINDS.circularProgress:
+    case COMPONENT_KIND.circularProgress:
       return `a ${it.wavy ? "wavy " : ""}circular progress indicator (${it.value === undefined ? "indeterminate" : `${it.value}%`}${progressThickness(it) !== 4 ? `, ${progressThickness(it)}dp track thickness` : ""})`;
-    case KINDS.splitButton:
+    case COMPONENT_KIND.splitButton:
       return `a ${v} split button ${q(it.label)}${it.icon ? ` with a ${it.icon} icon` : ""} and a trailing menu segment with a down arrow`;
-    case KINDS.fabMenu: {
+    case COMPONENT_KIND.fabMenu: {
       const items = (it.tabs ?? []).map((t) => `${q(t.label || "unlabeled")} (${t.icon || "no icon"})`);
       return `a FAB menu opening from a ${v} FAB, drawn open with ${items.length} items stacked above it: ${items.join(", ")}`;
     }
-    case KINDS.toolbar: {
+    case COMPONENT_KIND.toolbar: {
       const icons = (it.tabs ?? []).map((t) => t.icon || "empty").join(", ");
       return `a ${it.variant === "filled" ? "vibrant (primaryContainer)" : "standard"} floating toolbar with the icon buttons ${icons}`;
     }
-    case KINDS.tabs: {
+    case COMPONENT_KIND.tabs: {
       const labels = (it.tabs ?? []).map((t) => q(t.label || "unlabeled"));
       return `a ${isScrollableTabs(it) ? "horizontally scrolling " : ""}tab row with ${labels.length} tabs: ${labels.join(", ")}; ${selectedText(it, "en")}`;
     }
-    case KINDS.radio:
+    case COMPONENT_KIND.radio:
       return `a radio button ${q(it.label)} (initially ${it.checked ? "selected" : "unselected"})`;
-    case KINDS.badge:
+    case COMPONENT_KIND.badge:
       return hasText(it.label) ? `a badge reading ${q(it.label)}` : "a small dot badge";
     default:
       return noun;
@@ -331,86 +331,86 @@ function itemZh(it: Item): string {
   const v = VARIANT_TEXT.zh[it.variant];
   const noun = KIND_TEXT.zh[it.kind]?.noun ?? it.kind;
   switch (it.kind) {
-    case KINDS.button:
+    case COMPONENT_KIND.button:
       return `${hasText(it.label) ? q(it.label) : "无标签"}的${v}按钮${it.icon ? `（带 ${it.icon} 图标）` : ""}${it.size ? `（宽 ${it.size}dp）` : ""}`;
-    case KINDS.iconButton:
+    case COMPONENT_KIND.iconButton:
       return `${it.icon ?? "空"} 图标的${v}图标按钮`;
-    case KINDS.fab:
+    case COMPONENT_KIND.fab:
       return `${it.icon ?? "空"} 图标的${v} FAB${it.size && it.size >= 96 ? "（大尺寸）" : it.size && it.size <= 40 ? "（小尺寸）" : ""}`;
-    case KINDS.extendedFab:
+    case COMPONENT_KIND.extendedFab:
       return `${q(it.label)}${it.icon ? `和 ${it.icon} 图标` : ""}的扩展 FAB（${v}）`;
-    case KINDS.chip:
+    case COMPONENT_KIND.chip:
       return `${q(it.label)}标签片${it.checked ? "（选中状态）" : ""}${it.icon && !it.checked ? `（带 ${it.icon} 图标）` : ""}`;
-    case KINDS.topAppBar:
+    case COMPONENT_KIND.topAppBar:
       return `标题为${q(it.label)}的顶部应用栏${it.icon ? `，左侧是 ${it.icon}` : ""}${it.icon2 ? `，右侧是 ${it.icon2}` : ""}${it.icon || it.icon2 ? " 图标按钮" : ""}`;
-    case KINDS.bottomNav: {
+    case COMPONENT_KIND.bottomNav: {
       const tabs = (it.tabs ?? []).map((t) => `${q(t.label || "无标签")}(${t.icon || "无图标"})`);
       return `${tabs.length}个项目的导航栏（${tabs.join("、")}，${selectedText(it, "zh")}）`;
     }
-    case KINDS.navRail: {
+    case COMPONENT_KIND.navRail: {
       const tabs = (it.tabs ?? []).map((t) => `${q(t.label || "无标签")}(${t.icon || "无图标"})`);
       return `${tabs.length}个项目的侧边导航栏（${tabs.join("、")}，${selectedText(it, "zh")}）${railStateText(it, "zh")}`;
     }
-    case KINDS.searchBar:
+    case COMPONENT_KIND.searchBar:
       return `占位文字为${q(it.label)}的搜索栏${it.icon2 ? `（右端有 ${it.icon2} 图标）` : ""}`;
-    case KINDS.card: {
+    case COMPONENT_KIND.card: {
       const style = it.variant === "elevated" ? "浮起" : it.variant === "outlined" ? "描边" : "填充";
       return `${style}卡片${it.size2 ? `（高 ${it.size2}dp）` : ""}${cardLook(it, "zh")}。${cardImage(it, "zh")}标题${q(it.label)}${hasText(it.supporting) ? `，正文${q(it.supporting!)}` : ""}${cardText(it, "zh")}`;
     }
-    case KINDS.listItem:
+    case COMPONENT_KIND.listItem:
       return `${q(it.label)}${hasText(it.supporting) ? `（辅助文本${q(it.supporting!)}）` : ""}${it.icon ? `，左侧显示 ${it.icon} 图标${it.iconFill === "none" ? "（无背景）" : it.iconFill ? `（背景 ${it.iconFill}）` : ""}` : ""}${it.switch ? `，显示列表项开关（初始${it.checked ? "开启" : "关闭"}）` : it.icon2 ? `，右侧显示 ${it.icon2} 图标` : ""}${it.fill && it.fill !== "surfaceContainerLow" ? `，背景为 ${it.fill}` : ""}`;
-    case KINDS.dialog:
+    case COMPONENT_KIND.dialog:
       return `标题${q(it.label)}${hasText(it.supporting) ? `、正文${q(it.supporting!)}` : ""}${it.icon ? `、带 ${it.icon} 图标` : ""}的对话框（取消／确定文字按钮）`;
-    case KINDS.snackbar:
+    case COMPONENT_KIND.snackbar:
       return `${q(it.label)}消息条${hasText(it.supporting) ? `（带${q(it.supporting!)}操作）` : ""}`;
-    case KINDS.textField:
+    case COMPONENT_KIND.textField:
       return `标签为${q(it.label)}的${it.variant === "filled" ? "填充" : "描边"}文本输入框${it.icon ? `（左侧显示 ${it.icon} 图标）` : ""}${hasText(it.supporting) ? `，辅助文本为${q(it.supporting!)}` : ""}`;
-    case KINDS.select: {
+    case COMPONENT_KIND.select: {
       const opts = (it.tabs ?? []).map((t) => q(t.label || "无标签"));
       const initial = it.selected !== undefined && it.tabs?.[it.selected] ? `，初始值为${q(it.tabs[it.selected].label)}` : "，初始未选择";
       return `标签为${q(it.label)}的${it.variant === "filled" ? "填充" : "描边"}下拉菜单（点击展开菜单选择一项，选项为${opts.join("、")}${initial}）${it.icon ? `（左侧显示 ${it.icon} 图标）` : ""}${hasText(it.supporting) ? `，辅助文本为${q(it.supporting!)}` : ""}`;
     }
-    case KINDS.switch:
+    case COMPONENT_KIND.switch:
       return `${q(it.label)}开关（初始状态为${it.checked ? "开" : "关"}${it.noCheck ? "，开启时手柄上不显示勾选图标" : ""}）`;
-    case KINDS.checkbox:
+    case COMPONENT_KIND.checkbox:
       return `${q(it.label)}复选框（初始状态为${it.checked ? "已勾选" : "未勾选"}）`;
-    case KINDS.slider:
+    case COMPONENT_KIND.slider:
       return `滑块（初始值 ${it.value ?? 40}%）`;
-    case KINDS.text:
+    case COMPONENT_KIND.text:
       return `${it.bold ? "粗体" : ""}文本${q(it.label)}（${it.size ?? 28}sp）`;
-    case KINDS.image:
+    case COMPONENT_KIND.image:
       return `${it.size ?? 200}dp 见方的图片${imageSrc(it) ? `（显示 ${imageSrc(it)} 的图片）` : it.src ? "（显示指定的图片）" : "占位符"}`;
-    case KINDS.camera:
+    case COMPONENT_KIND.camera:
       return `${viewSize(it, 4 / 3)} 的相机预览`;
-    case KINDS.map:
+    case COMPONENT_KIND.map:
       return `${viewSize(it, 3 / 4)} 的地图`;
-    case KINDS.divider:
+    case COMPONENT_KIND.divider:
       return "分割线";
-    case KINDS.box:
+    case COMPONENT_KIND.box:
       return `${it.size ?? PHONE_W}×${it.size2 ?? 220}dp 的${it.checked ? "底部面板（顶部带拖动条，" : "容器框（"}背景 ${it.fill ?? "surfaceContainerLow"}，${boxCorners(it, "zh")}）`;
-    case KINDS.loadingIndicator:
+    case COMPONENT_KIND.loadingIndicator:
       return `M3 Expressive 形状变化的加载指示器${it.contained ? "（带容器）" : ""}`;
-    case KINDS.linearProgress:
+    case COMPONENT_KIND.linearProgress:
       return `${it.wavy ? "波浪形" : ""}线性进度条（${it.value === undefined ? "不确定进度" : `${it.value}%`}${progressThickness(it) !== 4 ? `，轨道粗细 ${progressThickness(it)}dp` : ""}）`;
-    case KINDS.circularProgress:
+    case COMPONENT_KIND.circularProgress:
       return `${it.wavy ? "波浪形" : ""}圆形进度条（${it.value === undefined ? "不确定进度" : `${it.value}%`}${progressThickness(it) !== 4 ? `，轨道粗细 ${progressThickness(it)}dp` : ""}）`;
-    case KINDS.splitButton:
+    case COMPONENT_KIND.splitButton:
       return `${q(it.label)}${it.icon ? `（带 ${it.icon} 图标）` : ""}的${v}拆分按钮（右侧为带向下箭头的菜单段）`;
-    case KINDS.fabMenu: {
+    case COMPONENT_KIND.fabMenu: {
       const items = (it.tabs ?? []).map((t) => `${q(t.label || "无标签")}(${t.icon || "无图标"})`);
       return `从${v} FAB 展开的 FAB 菜单（按展开状态绘制，上方纵向排列 ${items.length} 项：${items.join("、")}）`;
     }
-    case KINDS.toolbar: {
+    case COMPONENT_KIND.toolbar: {
       const icons = (it.tabs ?? []).map((t) => t.icon || "空").join("、");
       return `${it.variant === "filled" ? "鲜明（primaryContainer）" : "标准"}样式的悬浮工具栏（图标按钮：${icons}）`;
     }
-    case KINDS.tabs: {
+    case COMPONENT_KIND.tabs: {
       const labels = (it.tabs ?? []).map((t) => q(t.label || "无标签"));
       return `${labels.join("、")}这 ${labels.length} 个标签页（${selectedText(it, "zh")}${isScrollableTabs(it) ? "，可横向滚动" : ""}）`;
     }
-    case KINDS.radio:
+    case COMPONENT_KIND.radio:
       return `${q(it.label)}单选按钮（初始状态为${it.checked ? "选中" : "未选中"}）`;
-    case KINDS.badge:
+    case COMPONENT_KIND.badge:
       return hasText(it.label) ? `显示${q(it.label)}的徽标` : "小圆点徽标";
     default:
       return noun;
@@ -422,61 +422,61 @@ function itemKo(it: Item): string {
   const v = VARIANT_TEXT.ko[it.variant];
   const noun = KIND_TEXT.ko[it.kind]?.noun ?? it.kind;
   switch (it.kind) {
-    case KINDS.button: return `${hasText(it.label) ? q(it.label) : "레이블 없는"} ${v} 버튼${it.icon ? `(${it.icon} 아이콘 포함)` : ""}${it.size ? `(너비 ${it.size}dp)` : ""}`;
-    case KINDS.iconButton: return `${it.icon ?? "빈"} 아이콘의 ${v} 아이콘 버튼`;
-    case KINDS.fab: return `${it.icon ?? "빈"} 아이콘의 ${v} FAB${it.size && it.size >= 96 ? "(대형)" : it.size && it.size <= 40 ? "(소형)" : ""}`;
-    case KINDS.extendedFab: return `${q(it.label)}${it.icon ? ` 및 ${it.icon} 아이콘` : ""} 확장 FAB(${v})`;
-    case KINDS.chip: return `${q(it.label)} 칩${it.checked ? "(선택됨)" : ""}${it.icon && !it.checked ? `(${it.icon} 아이콘 포함)` : ""}`;
-    case KINDS.topAppBar: return `제목이 ${q(it.label)}인 상단 앱 바${it.icon ? `, 왼쪽 ${it.icon}` : ""}${it.icon2 ? `, 오른쪽 ${it.icon2}` : ""}${it.icon || it.icon2 ? " 아이콘 버튼" : ""}`;
-    case KINDS.bottomNav: {
+    case COMPONENT_KIND.button: return `${hasText(it.label) ? q(it.label) : "레이블 없는"} ${v} 버튼${it.icon ? `(${it.icon} 아이콘 포함)` : ""}${it.size ? `(너비 ${it.size}dp)` : ""}`;
+    case COMPONENT_KIND.iconButton: return `${it.icon ?? "빈"} 아이콘의 ${v} 아이콘 버튼`;
+    case COMPONENT_KIND.fab: return `${it.icon ?? "빈"} 아이콘의 ${v} FAB${it.size && it.size >= 96 ? "(대형)" : it.size && it.size <= 40 ? "(소형)" : ""}`;
+    case COMPONENT_KIND.extendedFab: return `${q(it.label)}${it.icon ? ` 및 ${it.icon} 아이콘` : ""} 확장 FAB(${v})`;
+    case COMPONENT_KIND.chip: return `${q(it.label)} 칩${it.checked ? "(선택됨)" : ""}${it.icon && !it.checked ? `(${it.icon} 아이콘 포함)` : ""}`;
+    case COMPONENT_KIND.topAppBar: return `제목이 ${q(it.label)}인 상단 앱 바${it.icon ? `, 왼쪽 ${it.icon}` : ""}${it.icon2 ? `, 오른쪽 ${it.icon2}` : ""}${it.icon || it.icon2 ? " 아이콘 버튼" : ""}`;
+    case COMPONENT_KIND.bottomNav: {
       const tabs = (it.tabs ?? []).map((t) => `${q(t.label || "레이블 없음")}(${t.icon || "아이콘 없음"})`);
       return `${tabs.length}개 항목의 내비게이션 바(${tabs.join(", ")}, ${selectedText(it, "ko")})`;
     }
-    case KINDS.navRail: {
+    case COMPONENT_KIND.navRail: {
       const tabs = (it.tabs ?? []).map((t) => `${q(t.label || "레이블 없음")}(${t.icon || "아이콘 없음"})`);
       return `${tabs.length}개 항목의 내비게이션 레일(${tabs.join(", ")}, ${selectedText(it, "ko")})${railStateText(it, "ko")}`;
     }
-    case KINDS.searchBar: return `자리표시자가 ${q(it.label)}인 검색창${it.icon2 ? `(오른쪽 끝에 ${it.icon2} 아이콘)` : ""}`;
-    case KINDS.card: {
+    case COMPONENT_KIND.searchBar: return `자리표시자가 ${q(it.label)}인 검색창${it.icon2 ? `(오른쪽 끝에 ${it.icon2} 아이콘)` : ""}`;
+    case COMPONENT_KIND.card: {
       const style = it.variant === "elevated" ? "돌출" : it.variant === "outlined" ? "윤곽선" : "채움";
       return `${style} 카드${it.size2 ? `(높이 ${it.size2}dp)` : ""}${cardLook(it, "ko")}. ${cardImage(it, "ko")}제목 ${q(it.label)}${hasText(it.supporting) ? `, 본문 ${q(it.supporting!)}` : ""}${cardText(it, "ko")}`;
     }
-    case KINDS.listItem: return `${q(it.label)}${hasText(it.supporting) ? `(보조 텍스트 ${q(it.supporting!)})` : ""}${it.icon ? `, 앞쪽 ${it.icon} 아이콘${it.iconFill === "none" ? "(배경 없음)" : it.iconFill ? `(배경 ${it.iconFill})` : ""}` : ""}${it.switch ? `, 끝에 스위치(초기 상태 ${it.checked ? "켜짐" : "꺼짐"})` : it.icon2 ? `, 뒤쪽 ${it.icon2}` : ""}${it.fill && it.fill !== "surfaceContainerLow" ? `, 배경 ${it.fill}` : ""}`;
-    case KINDS.dialog: return `제목 ${q(it.label)}${hasText(it.supporting) ? `, 본문 ${q(it.supporting!)}` : ""}${it.icon ? `, ${it.icon} 아이콘 포함` : ""} 대화상자(취소/확인 텍스트 버튼)`;
-    case KINDS.snackbar: return `${q(it.label)} 스낵바${hasText(it.supporting) ? `(${q(it.supporting!)} 동작 포함)` : ""}`;
-    case KINDS.textField: return `레이블이 ${q(it.label)}인 ${it.variant === "filled" ? "채움" : "윤곽선"} 텍스트 입력란${it.icon ? `(앞쪽 ${it.icon} 아이콘)` : ""}${hasText(it.supporting) ? `. 보조 텍스트는 ${q(it.supporting!)}` : ""}`;
-    case KINDS.select: {
+    case COMPONENT_KIND.listItem: return `${q(it.label)}${hasText(it.supporting) ? `(보조 텍스트 ${q(it.supporting!)})` : ""}${it.icon ? `, 앞쪽 ${it.icon} 아이콘${it.iconFill === "none" ? "(배경 없음)" : it.iconFill ? `(배경 ${it.iconFill})` : ""}` : ""}${it.switch ? `, 끝에 스위치(초기 상태 ${it.checked ? "켜짐" : "꺼짐"})` : it.icon2 ? `, 뒤쪽 ${it.icon2}` : ""}${it.fill && it.fill !== "surfaceContainerLow" ? `, 배경 ${it.fill}` : ""}`;
+    case COMPONENT_KIND.dialog: return `제목 ${q(it.label)}${hasText(it.supporting) ? `, 본문 ${q(it.supporting!)}` : ""}${it.icon ? `, ${it.icon} 아이콘 포함` : ""} 대화상자(취소/확인 텍스트 버튼)`;
+    case COMPONENT_KIND.snackbar: return `${q(it.label)} 스낵바${hasText(it.supporting) ? `(${q(it.supporting!)} 동작 포함)` : ""}`;
+    case COMPONENT_KIND.textField: return `레이블이 ${q(it.label)}인 ${it.variant === "filled" ? "채움" : "윤곽선"} 텍스트 입력란${it.icon ? `(앞쪽 ${it.icon} 아이콘)` : ""}${hasText(it.supporting) ? `. 보조 텍스트는 ${q(it.supporting!)}` : ""}`;
+    case COMPONENT_KIND.select: {
       const opts = (it.tabs ?? []).map((t) => q(t.label || "레이블 없음"));
       const initial = it.selected !== undefined && it.tabs?.[it.selected] ? `, 초깃값은 ${q(it.tabs[it.selected].label)}` : ", 초깃값은 없음";
       return `레이블이 ${q(it.label)}인 ${it.variant === "filled" ? "채움" : "윤곽선"} 드롭다운(탭하면 메뉴가 열려 하나를 고른다. 선택지는 ${opts.join(", ")}${initial})${it.icon ? `(앞쪽 ${it.icon} 아이콘)` : ""}${hasText(it.supporting) ? `. 보조 텍스트는 ${q(it.supporting!)}` : ""}`;
     }
-    case KINDS.switch: return `${q(it.label)} 스위치(초기 상태 ${it.checked ? "켜짐" : "꺼짐"}${it.noCheck ? ", 켜졌을 때 핸들에 체크 아이콘 없음" : ""})`;
-    case KINDS.checkbox: return `${q(it.label)} 체크박스(초기 상태 ${it.checked ? "선택됨" : "선택 안 됨"})`;
-    case KINDS.slider: return `슬라이더(초깃값 ${it.value ?? 40}%)`;
-    case KINDS.text: return `${it.bold ? "굵은 " : ""}텍스트 ${q(it.label)}(${it.size ?? 28}sp)`;
-    case KINDS.image: return `${it.size ?? 200}dp 정사각형 이미지${imageSrc(it) ? `(${imageSrc(it)}의 이미지 표시)` : it.src ? "(지정한 이미지 표시)" : " 자리표시자"}`;
-    case KINDS.camera: return `${viewSize(it, 4 / 3)} 카메라 미리보기`;
-    case KINDS.map: return `${viewSize(it, 3 / 4)} 지도`;
-    case KINDS.divider: return "구분선";
-    case KINDS.box: return `${it.size ?? PHONE_W}×${it.size2 ?? 220}dp ${it.checked ? "하단 시트(위쪽 드래그 핸들 포함)" : "상자"}(배경 ${it.fill ?? "surfaceContainerLow"}, ${boxCorners(it, "ko")})`;
-    case KINDS.loadingIndicator: return `M3 Expressive 형태 변환 로딩 표시기${it.contained ? "(컨테이너 포함)" : ""}`;
-    case KINDS.linearProgress: return `${it.wavy ? "물결 모양 " : ""}선형 진행 표시기(${it.value === undefined ? "불확정" : `${it.value}%`}${progressThickness(it) !== 4 ? `, 트랙 두께 ${progressThickness(it)}dp` : ""})`;
-    case KINDS.circularProgress: return `${it.wavy ? "물결 모양 " : ""}원형 진행 표시기(${it.value === undefined ? "불확정" : `${it.value}%`}${progressThickness(it) !== 4 ? `, 트랙 두께 ${progressThickness(it)}dp` : ""})`;
-    case KINDS.splitButton: return `${q(it.label)}${it.icon ? `(${it.icon} 아이콘 포함)` : ""} ${v} 분할 버튼(오른쪽에 아래쪽 화살표가 있는 메뉴 영역)`;
-    case KINDS.fabMenu: {
+    case COMPONENT_KIND.switch: return `${q(it.label)} 스위치(초기 상태 ${it.checked ? "켜짐" : "꺼짐"}${it.noCheck ? ", 켜졌을 때 핸들에 체크 아이콘 없음" : ""})`;
+    case COMPONENT_KIND.checkbox: return `${q(it.label)} 체크박스(초기 상태 ${it.checked ? "선택됨" : "선택 안 됨"})`;
+    case COMPONENT_KIND.slider: return `슬라이더(초깃값 ${it.value ?? 40}%)`;
+    case COMPONENT_KIND.text: return `${it.bold ? "굵은 " : ""}텍스트 ${q(it.label)}(${it.size ?? 28}sp)`;
+    case COMPONENT_KIND.image: return `${it.size ?? 200}dp 정사각형 이미지${imageSrc(it) ? `(${imageSrc(it)}의 이미지 표시)` : it.src ? "(지정한 이미지 표시)" : " 자리표시자"}`;
+    case COMPONENT_KIND.camera: return `${viewSize(it, 4 / 3)} 카메라 미리보기`;
+    case COMPONENT_KIND.map: return `${viewSize(it, 3 / 4)} 지도`;
+    case COMPONENT_KIND.divider: return "구분선";
+    case COMPONENT_KIND.box: return `${it.size ?? PHONE_W}×${it.size2 ?? 220}dp ${it.checked ? "하단 시트(위쪽 드래그 핸들 포함)" : "상자"}(배경 ${it.fill ?? "surfaceContainerLow"}, ${boxCorners(it, "ko")})`;
+    case COMPONENT_KIND.loadingIndicator: return `M3 Expressive 형태 변환 로딩 표시기${it.contained ? "(컨테이너 포함)" : ""}`;
+    case COMPONENT_KIND.linearProgress: return `${it.wavy ? "물결 모양 " : ""}선형 진행 표시기(${it.value === undefined ? "불확정" : `${it.value}%`}${progressThickness(it) !== 4 ? `, 트랙 두께 ${progressThickness(it)}dp` : ""})`;
+    case COMPONENT_KIND.circularProgress: return `${it.wavy ? "물결 모양 " : ""}원형 진행 표시기(${it.value === undefined ? "불확정" : `${it.value}%`}${progressThickness(it) !== 4 ? `, 트랙 두께 ${progressThickness(it)}dp` : ""})`;
+    case COMPONENT_KIND.splitButton: return `${q(it.label)}${it.icon ? `(${it.icon} 아이콘 포함)` : ""} ${v} 분할 버튼(오른쪽에 아래쪽 화살표가 있는 메뉴 영역)`;
+    case COMPONENT_KIND.fabMenu: {
       const items = (it.tabs ?? []).map((t) => `${q(t.label || "레이블 없음")}(${t.icon || "아이콘 없음"})`);
       return `${v} FAB에서 열리는 FAB 메뉴(열린 상태로 표시, 위쪽에 ${items.join(", ")} 항목 ${items.length}개를 세로 배치)`;
     }
-    case KINDS.toolbar: {
+    case COMPONENT_KIND.toolbar: {
       const icons = (it.tabs ?? []).map((t) => t.icon || "빈 아이콘").join(", ");
       return `${it.variant === "filled" ? "비브런트(primaryContainer)" : "표준"} 플로팅 도구 모음(${icons} 아이콘 버튼)`;
     }
-    case KINDS.tabs: {
+    case COMPONENT_KIND.tabs: {
       const labels = (it.tabs ?? []).map((t) => q(t.label || "레이블 없음"));
       return `${labels.join(", ")}의 탭 ${labels.length}개(${selectedText(it, "ko")}${isScrollableTabs(it) ? ", 가로로 스크롤되는 탭" : ""})`;
     }
-    case KINDS.radio: return `${q(it.label)} 라디오 버튼(초기 상태 ${it.checked ? "선택됨" : "선택 안 됨"})`;
-    case KINDS.badge: return hasText(it.label) ? `${q(it.label)}을 표시하는 배지` : "작은 점 배지";
+    case COMPONENT_KIND.radio: return `${q(it.label)} 라디오 버튼(초기 상태 ${it.checked ? "선택됨" : "선택 안 됨"})`;
+    case COMPONENT_KIND.badge: return hasText(it.label) ? `${q(it.label)}을 표시하는 배지` : "작은 점 배지";
     default: return noun;
   }
 }
@@ -516,35 +516,35 @@ function groupText(g: Group, lang: Lang): string {
   const vt = VARIANT_TEXT[lang];
   const same = g.items.every((it) => it.variant === g.items[0].variant);
   if (lang === "ja") {
-    if (kind === KINDS.listItem) return `${g.items.length}項目のリスト。上から ${g.items.map(itemJa).join("、")}`;
-    if (kind === KINDS.chip) return `${g.items.map((it) => q(it.label) + (it.checked ? "(選択中)" : "")).join("")}のチップが横に並ぶチップグループ`;
-    if (kind === KINDS.iconButton) return `${g.items.map((it) => it.icon ?? "空").join("・")} のアイコンボタンが連結したボタングループ`;
+    if (kind === COMPONENT_KIND.listItem) return `${g.items.length}項目のリスト。上から ${g.items.map(itemJa).join("、")}`;
+    if (kind === COMPONENT_KIND.chip) return `${g.items.map((it) => q(it.label) + (it.checked ? "(選択中)" : "")).join("")}のチップが横に並ぶチップグループ`;
+    if (kind === COMPONENT_KIND.iconButton) return `${g.items.map((it) => it.icon ?? "空").join("・")} のアイコンボタンが連結したボタングループ`;
     const names = same
       ? g.items.map((it) => q(it.label || "ラベルなし")).join("")
       : g.items.map((it) => `${q(it.label || "ラベルなし")}(${vt[it.variant]})`).join("");
     return `${names}の${g.items.length}つのボタンが横に連結したボタングループ${same ? `（${vt[g.items[0].variant]}）` : ""}`;
   }
   if (lang === "zh") {
-    if (kind === KINDS.listItem) return `${g.items.length}项的列表，从上到下依次为 ${g.items.map(itemZh).join("、")}`;
-    if (kind === KINDS.chip) return `由${g.items.map((it) => q(it.label) + (it.checked ? "(选中)" : "")).join("")}横向排列组成的标签片组`;
-    if (kind === KINDS.iconButton) return `由 ${g.items.map((it) => it.icon ?? "空").join("、")} 图标按钮相连组成的按钮组`;
+    if (kind === COMPONENT_KIND.listItem) return `${g.items.length}项的列表，从上到下依次为 ${g.items.map(itemZh).join("、")}`;
+    if (kind === COMPONENT_KIND.chip) return `由${g.items.map((it) => q(it.label) + (it.checked ? "(选中)" : "")).join("")}横向排列组成的标签片组`;
+    if (kind === COMPONENT_KIND.iconButton) return `由 ${g.items.map((it) => it.icon ?? "空").join("、")} 图标按钮相连组成的按钮组`;
     const names = same
       ? g.items.map((it) => q(it.label || "无标签")).join("")
       : g.items.map((it) => `${q(it.label || "无标签")}(${vt[it.variant]})`).join("");
     return `由${names}这 ${g.items.length} 个按钮横向相连组成的按钮组${same ? `（${vt[g.items[0].variant]}）` : ""}`;
   }
   if (lang === "ko") {
-    if (kind === KINDS.listItem) return `${g.items.length}개 항목의 목록. 위에서부터 ${g.items.map(itemKo).join(", ")}`;
-    if (kind === KINDS.chip) return `${g.items.map((it) => q(it.label) + (it.checked ? "(선택됨)" : "")).join(", ")} 칩을 가로로 배치한 칩 그룹`;
-    if (kind === KINDS.iconButton) return `${g.items.map((it) => it.icon ?? "빈 아이콘").join(", ")} 아이콘 버튼을 연결한 버튼 그룹`;
+    if (kind === COMPONENT_KIND.listItem) return `${g.items.length}개 항목의 목록. 위에서부터 ${g.items.map(itemKo).join(", ")}`;
+    if (kind === COMPONENT_KIND.chip) return `${g.items.map((it) => q(it.label) + (it.checked ? "(선택됨)" : "")).join(", ")} 칩을 가로로 배치한 칩 그룹`;
+    if (kind === COMPONENT_KIND.iconButton) return `${g.items.map((it) => it.icon ?? "빈 아이콘").join(", ")} 아이콘 버튼을 연결한 버튼 그룹`;
     const names = same
       ? g.items.map((it) => q(it.label || "레이블 없음")).join(", ")
       : g.items.map((it) => `${q(it.label || "레이블 없음")}(${vt[it.variant]})`).join(", ");
     return `${names} 버튼 ${g.items.length}개를 가로로 연결한 버튼 그룹${same ? `(${vt[g.items[0].variant]})` : ""}`;
   }
-  if (kind === KINDS.listItem) return `a list of ${g.items.length} items, top to bottom: ${g.items.map(itemEn).join("; ")}`;
-  if (kind === KINDS.chip) return `a chip group: ${g.items.map((it) => q(it.label) + (it.checked ? " (selected)" : "")).join(", ")}`;
-  if (kind === KINDS.iconButton) return `a connected group of icon buttons: ${g.items.map((it) => it.icon ?? "empty").join(", ")}`;
+  if (kind === COMPONENT_KIND.listItem) return `a list of ${g.items.length} items, top to bottom: ${g.items.map(itemEn).join("; ")}`;
+  if (kind === COMPONENT_KIND.chip) return `a chip group: ${g.items.map((it) => q(it.label) + (it.checked ? " (selected)" : "")).join(", ")}`;
+  if (kind === COMPONENT_KIND.iconButton) return `a connected group of icon buttons: ${g.items.map((it) => it.icon ?? "empty").join(", ")}`;
   const names = same
     ? g.items.map((it) => q(it.label || "unlabeled")).join(", ")
     : g.items.map((it) => `${q(it.label || "unlabeled")} (${vt[it.variant]})`).join(", ");
@@ -557,8 +557,8 @@ function groupName(g: Group, lang: Lang): string {
   const noun = KIND_TEXT[lang][it.kind]?.noun ?? it.kind;
   const q = quote(lang);
   if (g.items.length > 1) return lang === "en" ? `the ${noun} group` : lang === "zh" ? `${noun}组` : lang === "ko" ? `${noun} 그룹` : `${noun}のグループ`;
-  if (it.kind === KINDS.box) return lang === "en" ? (it.checked ? "the bottom sheet" : "the box") : lang === "zh" ? (it.checked ? "底部面板" : "容器框") : lang === "ko" ? (it.checked ? "하단 시트" : "상자") : it.checked ? "ボトムシート" : "ボックス";
-  if (hasText(it.label) && it.kind !== KINDS.text) return lang === "en" ? `the ${q(it.label)} ${noun}` : `${q(it.label)}${lang === "ko" ? " " : ""}${noun}`;
+  if (it.kind === COMPONENT_KIND.box) return lang === "en" ? (it.checked ? "the bottom sheet" : "the box") : lang === "zh" ? (it.checked ? "底部面板" : "容器框") : lang === "ko" ? (it.checked ? "하단 시트" : "상자") : it.checked ? "ボトムシート" : "ボックス";
+  if (hasText(it.label) && it.kind !== COMPONENT_KIND.text) return lang === "en" ? `the ${q(it.label)} ${noun}` : `${q(it.label)}${lang === "ko" ? " " : ""}${noun}`;
   return lang === "en" ? `the ${noun}` : noun;
 }
 
@@ -599,7 +599,7 @@ function notes(g: Group, frames: Frame[], lang: Lang): string[] {
   const q = quote(lang);
   for (const it of g.items) {
     const noun = KIND_TEXT[lang][it.kind]?.noun ?? it.kind;
-    const name = hasText(it.label) && it.kind !== KINDS.text ? (lang === "en" ? `The ${q(it.label)} ${noun}` : `${q(it.label)}${lang === "ko" ? " " : ""}${noun}`) : lang === "en" ? `The ${noun}` : hasText(it.label) ? (lang === "ja" ? `テキスト${q(it.label)}` : lang === "zh" ? `文本${q(it.label)}` : `텍스트 ${q(it.label)}`) : noun;
+    const name = hasText(it.label) && it.kind !== COMPONENT_KIND.text ? (lang === "en" ? `The ${q(it.label)} ${noun}` : `${q(it.label)}${lang === "ko" ? " " : ""}${noun}`) : lang === "en" ? `The ${noun}` : hasText(it.label) ? (lang === "ja" ? `テキスト${q(it.label)}` : lang === "zh" ? `文本${q(it.label)}` : `텍스트 ${q(it.label)}`) : noun;
     const parts: string[] = [];
     if (it.action) {
       const a = actionText(it.action, frames, lang);
@@ -693,7 +693,7 @@ function layoutTree(groups: Group[], widths: Record<string, number>): LNode[] {
     let parent: LNode | null = null;
     for (let j = 0; j < i; j++) {
       const c = nodes[j];
-      if (c.g.items[0].kind === KINDS.topAppBar || c.g.items[0].kind === KINDS.bottomNav) continue;
+      if (c.g.items[0].kind === COMPONENT_KIND.topAppBar || c.g.items[0].kind === COMPONENT_KIND.bottomNav) continue;
       if (contains(c.bb, n.bb) && area(c.bb) > area(n.bb) && (!parent || area(c.bb) < area(parent.bb))) parent = c;
     }
     (parent ? parent.children : roots).push(n);
@@ -840,7 +840,7 @@ function describeScreen(lines: string[], groups: Group[], frameRect: Rect | null
   if (!groups.length) return;
   /* a navigation rail runs the full height, so it is written first, on its own; the
    * rest of the screen is then read beside it in rows as usual */
-  const rails = groups.filter((g) => g.items.length === 1 && g.items[0].kind === KINDS.navRail);
+  const rails = groups.filter((g) => g.items.length === 1 && g.items[0].kind === COMPONENT_KIND.navRail);
   for (const g of rails) lines.push(`- ${RAIL_LEAD[lang]}${itemText(g.items[0], lang)}${lang === "ja" || lang === "zh" ? "。" : "."}`);
   const rest = rails.length ? groups.filter((g) => !rails.includes(g)) : groups;
   if (!rest.length) return;
@@ -897,7 +897,7 @@ function paletteLines(p: Palette): string[] {
 
 /** How each kind should look; only the kinds on the canvas are written out.
  *  `boxSheet` is the box note used when at least one box has its handle on. */
-const STYLE_NOTES: Record<Lang, Partial<Record<Kind | "boxSheet", string>>> = {
+const STYLE_NOTES: Record<Lang, Partial<Record<ComponentKind | "boxSheet", string>>> = {
   ja: {
     button:
       "ボタン: 高さ 56dp のミディアムサイズで、角は完全な丸（ピル型）。塗りつぶしは primary、トーナルは secondaryContainer、アウトラインは outline の 1dp 枠。横に連結したボタングループは 3dp の隙間で並べ、隣り合う内側の角だけ 8dp に小さくし、外側の角は丸のままにする（M3 Expressive の Connected button group）。",
@@ -1213,7 +1213,7 @@ const GENERAL: Record<Lang, (string | ((pl: Platform) => string))[]> = {
 };
 
 /** notes that differ on the web, where a browser has no status bar or gesture area to inset for */
-const STYLE_NOTES_WEB: Record<Lang, Partial<Record<Kind, string>>> = {
+const STYLE_NOTES_WEB: Record<Lang, Partial<Record<ComponentKind, string>>> = {
   ko: {
     topAppBar: "상단 앱 바: 높이 64dp, 배경 surface. 제목은 titleLarge, 양쪽 아이콘 버튼은 48dp를 사용한다. 스크롤 시 surfaceContainer로 색상이 바뀌는 표준 동작을 사용한다.",
     bottomNav: "내비게이션 바: 높이 80dp, 배경 surfaceContainer. 선택 항목은 secondaryContainer 알약 표시기(64×32dp), 채운 아이콘과 labelMedium 레이블로 표시한다.",
@@ -1436,21 +1436,21 @@ export function buildPrompt(doc: Doc, widths: Record<string, number>, onlyFrameI
     else if (!f) loose.push(g);
   }
 
-  const kindsUsed: Kind[] = [];
+  const kindsUsed: ComponentKind[] = [];
   let sheet = false;
   let wideRail = false;
   let legacyRail = false;
   for (const g of groups)
     for (const it of g.items) {
       if (!kindsUsed.includes(it.kind)) kindsUsed.push(it.kind);
-      if (it.kind === KINDS.box && it.checked) sheet = true;
-      if (it.kind === KINDS.navRail) {
+      if (it.kind === COMPONENT_KIND.box && it.checked) sheet = true;
+      if (it.kind === COMPONENT_KIND.navRail) {
         if (isWideRail(it)) wideRail = true;
         else legacyRail = true;
       }
     }
   const styleNotes = kindsUsed
-    .map((k) => (k === "navRail" && wideRail ? `${legacyRail ? `${STYLE_NOTES[lang].navRail} ` : ""}${WIDE_RAIL_STYLE[lang]}` : k === "box" && sheet ? STYLE_NOTES[lang].boxSheet : (platform === "web" && STYLE_NOTES_WEB[lang][k]) || STYLE_NOTES[lang][k]))
+    .map((k) => (k === COMPONENT_KIND.navRail && wideRail ? `${legacyRail ? `${STYLE_NOTES[lang].navRail} ` : ""}${WIDE_RAIL_STYLE[lang]}` : k === COMPONENT_KIND.box && sheet ? STYLE_NOTES[lang].boxSheet : (platform === "web" && STYLE_NOTES_WEB[lang][k]) || STYLE_NOTES[lang][k]))
     .filter((s): s is string => !!s);
 
   const title = only ? ph.titleOnly(q(only.name || ph.screen)) : doc.title.trim() || ph.titleAll(frames.length);

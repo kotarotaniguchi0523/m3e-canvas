@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import { KINDS, type Kind } from "./kind";
+import type { ComponentKind } from "./tokens";
 
 export type Lang = "ja" | "en" | "zh" | "ko";
 export const LANGS: { key: Lang; label: string }[] = [
@@ -30,16 +30,20 @@ export const SEED_TEXT: Record<Lang, { favorite: string; share: string; inbox: s
   ko: { favorite: "즐겨찾기", share: "공유", inbox: "받은편지함", starred: "별표 표시", archive: "보관함", supporting: "보조 텍스트", start: "시작하기" },
 };
 
-/** ponytail: matches defaults by text; add provenance if authored copies must be distinguished. */
-export function translateDefaultText(value: string, kind: Kind, field: "label" | "supporting" | "tab", lang: Lang): string {
+/** ponytail: matches defaults by text; add provenance if authored copies must be distinguished.
+ * This module is imported by tokens.ts for its translated defaults, so these
+ * few component checks intentionally use literals instead of creating a
+ * runtime cycle back to COMPONENT_KIND. The parameter is still ComponentKind,
+ * so an unsupported value cannot enter this function through TypeScript. */
+export function translateDefaultText(value: string, kind: ComponentKind, field: "label" | "supporting" | "tab", lang: Lang): string {
   for (const { key: from } of LANGS) {
     if (field === "tab") {
-      const labels = (l: Lang) => kind === KINDS.tabs ? TAB_LABELS[l] : kind === KINDS.select ? SELECT_OPTIONS[l] : (kind === KINDS.fabMenu ? FAB_MENU_TABS[l] : NAV_TABS[l]).map((tab) => tab.label);
+      const labels = (l: Lang) => kind === "tabs" ? TAB_LABELS[l] : kind === "select" ? SELECT_OPTIONS[l] : (kind === "fabMenu" ? FAB_MENU_TABS[l] : NAV_TABS[l]).map((tab) => tab.label);
       const index = labels(from).indexOf(value);
       if (index >= 0) return labels(lang)[index] ?? value;
     } else {
       if (value && value === KIND_TEXT[from][kind]?.[field]) return KIND_TEXT[lang][kind]?.[field] ?? value;
-      const keys: (keyof typeof SEED_TEXT.en)[] = field === "supporting" ? ["supporting"] : kind === KINDS.button ? ["favorite", "share", "start"] : kind === KINDS.listItem ? ["inbox", "starred", "archive"] : [];
+      const keys: (keyof typeof SEED_TEXT.en)[] = field === "supporting" ? ["supporting"] : kind === "button" ? ["favorite", "share", "start"] : kind === "listItem" ? ["inbox", "starred", "archive"] : [];
       for (const key of keys) {
         if (value === SEED_TEXT[from][key]) return SEED_TEXT[lang][key];
       }
@@ -505,7 +509,7 @@ export const t = (key: UIKey, lang: Lang = current): string => (lang === "ko" ? 
 
 export const KIND_TEXT: Record<
   Lang,
-  Record<Kind, { noun: string; label?: string; supporting?: string }>
+  Record<ComponentKind, { noun: string; label?: string; supporting?: string }>
 > = {
   ja: {
     box: { noun: "ボックス" },

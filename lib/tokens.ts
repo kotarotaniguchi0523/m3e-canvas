@@ -1,8 +1,6 @@
 import type { CSSProperties } from "react";
 import { FAB_MENU_TABS, KIND_TEXT, Lang, NAV_TABS, TAB_LABELS, getLang, t, SELECT_OPTIONS } from "./i18n";
 import { Contrast, isLightColor, schemeFromSeed } from "./color";
-import { KINDS, type Kind } from "./kind";
-export { KINDS, isKind, type Kind } from "./kind";
 
 /* ---------- geometry ---------- */
 export const H = 56; // M3 medium button height (dp)
@@ -434,7 +432,7 @@ export function variantStyle(v: Variant, p: Palette): CSSProperties {
       return { background: p.surfaceContainerLow, color: p.primary, border: "none" };
     case "outlined":
       return { background: "transparent", color: p.primary, border: `1px solid ${p.outline}` };
-    case "text":
+    case COMPONENT_KIND.text:
       return { background: "transparent", color: p.primary, border: "none" };
   }
 }
@@ -445,6 +443,47 @@ export function variantShadow(v: Variant): string {
 }
 
 /* ---------- component kinds ---------- */
+/** Component kinds are the document model's discriminant. Keep this domain in
+ * the token/model module; inspector and interaction discriminants live in
+ * their own contracts. */
+export const COMPONENT_KIND = {
+  box: "box",
+  button: "button",
+  iconButton: "iconButton",
+  fab: "fab",
+  extendedFab: "extendedFab",
+  chip: "chip",
+  topAppBar: "topAppBar",
+  bottomNav: "bottomNav",
+  navRail: "navRail",
+  searchBar: "searchBar",
+  card: "card",
+  listItem: "listItem",
+  dialog: "dialog",
+  snackbar: "snackbar",
+  textField: "textField",
+  select: "select",
+  switch: "switch",
+  checkbox: "checkbox",
+  slider: "slider",
+  text: "text",
+  image: "image",
+  camera: "camera",
+  map: "map",
+  divider: "divider",
+  loadingIndicator: "loadingIndicator",
+  linearProgress: "linearProgress",
+  circularProgress: "circularProgress",
+  splitButton: "splitButton",
+  fabMenu: "fabMenu",
+  toolbar: "toolbar",
+  tabs: "tabs",
+  radio: "radio",
+  badge: "badge",
+} as const;
+export type ComponentKind = (typeof COMPONENT_KIND)[keyof typeof COMPONENT_KIND];
+const COMPONENT_KIND_VALUES: readonly string[] = Object.values(COMPONENT_KIND);
+
 export type Axis = "x" | "y";
 /** kinds that fuse into a run: buttons side by side, list items stacked */
 export type ConnectSpec = { axis: Axis; outer: number; inner: number; family: string };
@@ -463,7 +502,7 @@ export const CATEGORIES: { key: Category; label: string; icon: string }[] = [
   { key: "progress", label: "Progress", icon: "progress_activity" },
 ];
 
-export type KindSpec = {
+export type ComponentKindSpec = {
   label: string;
   /** short Japanese noun used by the prompt generator */
   noun: string;
@@ -496,7 +535,7 @@ export type KindSpec = {
   defVariant?: Variant;
 };
 
-export const KIND_SPEC: Record<Kind, KindSpec> = {
+export const KIND_SPEC: Record<ComponentKind, ComponentKindSpec> = {
   box: {
     label: "Box",
     noun: "ボックス",
@@ -1087,41 +1126,45 @@ export const KIND_SPEC: Record<Kind, KindSpec> = {
 };
 
 /** Runtime boundary for JSON and other untyped input. */
-export const KIND_ORDER: Kind[] = [
-  KINDS.button,
-  KINDS.iconButton,
-  KINDS.fab,
-  KINDS.extendedFab,
-  KINDS.splitButton,
-  KINDS.fabMenu,
-  KINDS.chip,
-  KINDS.topAppBar,
-  KINDS.bottomNav,
-  KINDS.navRail,
-  KINDS.toolbar,
-  KINDS.tabs,
-  KINDS.searchBar,
-  KINDS.card,
-  KINDS.listItem,
-  KINDS.box,
-  KINDS.dialog,
-  KINDS.snackbar,
-  KINDS.textField,
-  KINDS.select,
-  KINDS.switch,
-  KINDS.checkbox,
-  KINDS.radio,
-  KINDS.slider,
-  KINDS.text,
-  KINDS.image,
-  KINDS.camera,
-  KINDS.map,
-  KINDS.badge,
-  KINDS.divider,
-  KINDS.loadingIndicator,
-  KINDS.linearProgress,
-  KINDS.circularProgress,
+export const KIND_ORDER: ComponentKind[] = [
+  COMPONENT_KIND.button,
+  COMPONENT_KIND.iconButton,
+  COMPONENT_KIND.fab,
+  COMPONENT_KIND.extendedFab,
+  COMPONENT_KIND.splitButton,
+  COMPONENT_KIND.fabMenu,
+  COMPONENT_KIND.chip,
+  COMPONENT_KIND.topAppBar,
+  COMPONENT_KIND.bottomNav,
+  COMPONENT_KIND.navRail,
+  COMPONENT_KIND.toolbar,
+  COMPONENT_KIND.tabs,
+  COMPONENT_KIND.searchBar,
+  COMPONENT_KIND.card,
+  COMPONENT_KIND.listItem,
+  COMPONENT_KIND.box,
+  COMPONENT_KIND.dialog,
+  COMPONENT_KIND.snackbar,
+  COMPONENT_KIND.textField,
+  COMPONENT_KIND.select,
+  COMPONENT_KIND.switch,
+  COMPONENT_KIND.checkbox,
+  COMPONENT_KIND.radio,
+  COMPONENT_KIND.slider,
+  COMPONENT_KIND.text,
+  COMPONENT_KIND.image,
+  COMPONENT_KIND.camera,
+  COMPONENT_KIND.map,
+  COMPONENT_KIND.badge,
+  COMPONENT_KIND.divider,
+  COMPONENT_KIND.loadingIndicator,
+  COMPONENT_KIND.linearProgress,
+  COMPONENT_KIND.circularProgress,
 ];
+
+/** Runtime boundary for JSON and other untyped input. */
+export const isComponentKind = (value: unknown): value is ComponentKind =>
+  typeof value === "string" && COMPONENT_KIND_VALUES.includes(value);
 
 /* ---------- screen data ---------- */
 export type NavTab = { icon: string; label: string };
@@ -1138,7 +1181,7 @@ export const isIconSlotKey = (key: string): key is IconSlotKey => key === "icon"
 
 export type Item = {
   id: string;
-  kind: Kind;
+  kind: ComponentKind;
   label: string;
   icon: string | null;
   icon2?: string | null;
@@ -1203,9 +1246,9 @@ export type Item = {
 export type ToggleLook = { icon?: string | null; variant?: Variant; label?: string };
 
 /** kinds that can act as a toggle button in the preview */
-export const TOGGLEABLE = [KINDS.button, KINDS.iconButton, KINDS.fab, KINDS.extendedFab] as const satisfies readonly Kind[];
-export type ToggleableKind = (typeof TOGGLEABLE)[number];
-export const isToggleableKind = (kind: Kind): kind is ToggleableKind => (TOGGLEABLE as readonly Kind[]).includes(kind);
+export const TOGGLEABLE = [COMPONENT_KIND.button, COMPONENT_KIND.iconButton, COMPONENT_KIND.fab, COMPONENT_KIND.extendedFab] as const satisfies readonly ComponentKind[];
+export type ToggleableComponentKind = (typeof TOGGLEABLE)[number];
+export const isToggleableKind = (kind: ComponentKind): kind is ToggleableComponentKind => (TOGGLEABLE as readonly ComponentKind[]).includes(kind);
 
 /** target id that pops the preview stack instead of opening a frame */
 export const BACK_TARGET = "back";
@@ -1243,9 +1286,9 @@ export const TRANSITIONS: { key: Transition; label: string; icon: string }[] = [
 
 /** slots on a bar that can each carry their own tap action */
 export function actionSlotsOf(it: Item): IconSlot[] {
-  if (it.kind === KINDS.topAppBar || it.kind === KINDS.bottomNav || it.kind === KINDS.navRail || it.kind === KINDS.toolbar) return iconSlotsOf(it).filter((s) => !!s.value);
-  if (it.kind === KINDS.fabMenu) return (it.tabs ?? []).map((t, i) => ({ key: tabSlotKey(i), label: t.label || `${i + 1}`, value: t.icon || null }));
-  if (it.kind === KINDS.tabs) return (it.tabs ?? []).map((t, i) => ({ key: tabSlotKey(i), label: t.label || `${i + 1}`, value: null }));
+  if (it.kind === COMPONENT_KIND.topAppBar || it.kind === COMPONENT_KIND.bottomNav || it.kind === COMPONENT_KIND.navRail || it.kind === COMPONENT_KIND.toolbar) return iconSlotsOf(it).filter((s) => !!s.value);
+  if (it.kind === COMPONENT_KIND.fabMenu) return (it.tabs ?? []).map((t, i) => ({ key: tabSlotKey(i), label: t.label || `${i + 1}`, value: t.icon || null }));
+  if (it.kind === COMPONENT_KIND.tabs) return (it.tabs ?? []).map((t, i) => ({ key: tabSlotKey(i), label: t.label || `${i + 1}`, value: null }));
   return [];
 }
 
@@ -1270,9 +1313,9 @@ export function actionsOf(it: Item): { slot: ActionSlotKey; action: Action }[] {
 }
 
 /** kinds a user can tap in the preview */
-export const TAPPABLE = [KINDS.button, KINDS.iconButton, KINDS.fab, KINDS.extendedFab, KINDS.chip, KINDS.listItem, KINDS.card, KINDS.image, KINDS.text, KINDS.splitButton, KINDS.radio] as const satisfies readonly Kind[];
-export type TappableKind = (typeof TAPPABLE)[number];
-export const isTappableKind = (kind: Kind): kind is TappableKind => (TAPPABLE as readonly Kind[]).includes(kind);
+export const TAPPABLE = [COMPONENT_KIND.button, COMPONENT_KIND.iconButton, COMPONENT_KIND.fab, COMPONENT_KIND.extendedFab, COMPONENT_KIND.chip, COMPONENT_KIND.listItem, COMPONENT_KIND.card, COMPONENT_KIND.image, COMPONENT_KIND.text, COMPONENT_KIND.splitButton, COMPONENT_KIND.radio] as const satisfies readonly ComponentKind[];
+export type TappableComponentKind = (typeof TAPPABLE)[number];
+export const isTappableKind = (kind: ComponentKind): kind is TappableComponentKind => (TAPPABLE as readonly ComponentKind[]).includes(kind);
 
 /** palette roles a user may pick as a background */
 export type ColorToken =
@@ -1453,14 +1496,14 @@ export const frameRect = (f: Frame) => {
 export const frameRadius = (f: Frame) => (isPhoneFrame(f) ? PHONE_R : DESKTOP_R);
 
 /** parts that span the screen edge to edge and follow its width when it changes */
-export const FULL_WIDTH = ["topAppBar", "bottomNav", "tabs"] as const satisfies readonly Kind[];
-export type FullWidthKind = (typeof FULL_WIDTH)[number];
-export const isFullWidth = (kind: Kind): kind is FullWidthKind => (FULL_WIDTH as readonly Kind[]).includes(kind);
+export const FULL_WIDTH = [COMPONENT_KIND.topAppBar, COMPONENT_KIND.bottomNav, COMPONENT_KIND.tabs] as const satisfies readonly ComponentKind[];
+export type FullWidthComponentKind = (typeof FULL_WIDTH)[number];
+export const isFullWidth = (kind: ComponentKind): kind is FullWidthComponentKind => (FULL_WIDTH as readonly ComponentKind[]).includes(kind);
 
 /** a part no taller than the screen it is placed on: a box or a rail sized to a phone shrinks to a shorter screen */
 export function fitHeight(it: Item, screenH: number): Item {
   const spec = KIND_SPEC[it.kind];
-  if (!spec.size2 && it.kind !== KINDS.navRail) return it;
+  if (!spec.size2 && it.kind !== COMPONENT_KIND.navRail) return it;
   const h = it.size2 ?? spec.h;
   return h > screenH ? { ...it, size2: screenH } : it;
 }
@@ -1473,7 +1516,7 @@ export function fitHeight(it: Item, screenH: number): Item {
 export function carryItemSize(it: Item, from: { w: number; h: number }, to: { w: number; h: number }): Item {
   const spec = KIND_SPEC[it.kind];
   const patch: Partial<Item> = {};
-  const keepsShape = it.kind === KINDS.card || it.kind === KINDS.image || it.kind === KINDS.camera || it.kind === KINDS.map;
+  const keepsShape = it.kind === COMPONENT_KIND.card || it.kind === COMPONENT_KIND.image || it.kind === COMPONENT_KIND.camera || it.kind === COMPONENT_KIND.map;
   if (spec.size && (spec.size.icon === "width" || keepsShape)) {
     /* only a size that is a width; a text size or an icon button's square are left alone */
     const cur = it.size ?? spec.defSize ?? spec.w;
@@ -1486,11 +1529,11 @@ export function carryItemSize(it: Item, from: { w: number; h: number }, to: { w:
     else if (cur === contentWidth(from.w)) patch.size = contentWidth(to.w);
     else if (cur === halfWidth(from.w)) patch.size = halfWidth(to.w);
     else if (cur > to.w) patch.size = to.w;
-    else if (cur > contentWidth(to.w) && it.kind !== KINDS.box) patch.size = contentWidth(to.w);
+    else if (cur > contentWidth(to.w) && it.kind !== COMPONENT_KIND.box) patch.size = contentWidth(to.w);
   }
-  if ((it.kind === KINDS.box || it.kind === KINDS.navRail) && (it.size2 ?? spec.h) === from.h) patch.size2 = to.h;
+  if ((it.kind === COMPONENT_KIND.box || it.kind === COMPONENT_KIND.navRail) && (it.size2 ?? spec.h) === from.h) patch.size2 = to.h;
   /* a camera or map the author gave a height keeps its aspect ratio when its width changes */
-  if ((it.kind === KINDS.camera || it.kind === KINDS.map) && it.size2 !== undefined && patch.size !== undefined) {
+  if ((it.kind === COMPONENT_KIND.camera || it.kind === COMPONENT_KIND.map) && it.size2 !== undefined && patch.size !== undefined) {
     const cur = it.size ?? spec.defSize ?? spec.w;
     patch.size2 = Math.round((it.size2 * patch.size) / cur);
   }
@@ -1655,22 +1698,22 @@ export const defaultTabs = (): NavTab[] => NAV_TABS[getLang()].map((t) => ({ ...
 const TOOLBAR_ICONS = ["format_bold", "format_italic", "format_underlined", "attach_file", "format_color_text", "more_vert"];
 
 /** the entries a kind starts with, also used to fill in rows the author adds */
-export function defaultTabsFor(kind: Kind): NavTab[] {
+export function defaultTabsFor(kind: ComponentKind): NavTab[] {
   switch (kind) {
-    case KINDS.tabs:
+    case COMPONENT_KIND.tabs:
       return TAB_LABELS[getLang()].map((label) => ({ icon: "", label }));
-    case KINDS.select:
+    case COMPONENT_KIND.select:
       return SELECT_OPTIONS[getLang()].map((label) => ({ icon: "", label }));
-    case KINDS.fabMenu:
+    case COMPONENT_KIND.fabMenu:
       return FAB_MENU_TABS[getLang()].map((t) => ({ ...t }));
-    case KINDS.toolbar:
+    case COMPONENT_KIND.toolbar:
       return TOOLBAR_ICONS.map((icon) => ({ icon, label: "" }));
     default:
       return defaultTabs();
   }
 }
 
-export function makeItem(kind: Kind): Item {
+export function makeItem(kind: ComponentKind): Item {
   const s = KIND_SPEC[kind];
   const text = KIND_TEXT[getLang()][kind];
   const it: Item = {
@@ -1683,32 +1726,32 @@ export function makeItem(kind: Kind): Item {
   if (s.defSupporting !== undefined) it.supporting = text?.supporting ?? s.defSupporting;
   if (s.defIcon2 !== undefined) it.icon2 = s.defIcon2;
   if (s.defSize !== undefined) it.size = s.defSize;
-  if (s.hasChecked) it.checked = kind !== KINDS.chip && kind !== KINDS.box;
-  if (kind === KINDS.box) {
+  if (s.hasChecked) it.checked = kind !== COMPONENT_KIND.chip && kind !== COMPONENT_KIND.box;
+  if (kind === COMPONENT_KIND.box) {
     it.size2 = 220;
     it.radiusTop = 28;
     it.radiusBottom = 28;
     it.fill = "surfaceContainerHigh";
   }
-  if (kind === KINDS.slider) it.value = 40;
-  if (kind === KINDS.bottomNav) {
+  if (kind === COMPONENT_KIND.slider) it.value = 40;
+  if (kind === COMPONENT_KIND.bottomNav) {
     it.tabs = defaultTabs();
     it.radiusTop = 0;
     it.radiusBottom = 0;
   }
-  if (kind === KINDS.navRail) {
+  if (kind === COMPONENT_KIND.navRail) {
     it.tabs = defaultTabs();
     it.railExpanded = false;
   }
-  if (kind === KINDS.tabs || kind === KINDS.fabMenu || kind === KINDS.select) it.tabs = defaultTabsFor(kind);
-  if (kind === KINDS.toolbar) it.tabs = defaultTabsFor(kind).slice(0, 4);
+  if (kind === COMPONENT_KIND.tabs || kind === COMPONENT_KIND.fabMenu || kind === COMPONENT_KIND.select) it.tabs = defaultTabsFor(kind);
+  if (kind === COMPONENT_KIND.toolbar) it.tabs = defaultTabsFor(kind).slice(0, 4);
   return it;
 }
 
 /** Content-sized kinds are measured in the DOM; the rest derive from spec + size. */
-export const MEASURED = ["button", "extendedFab", "chip", "switch", "checkbox", "text", "splitButton", "radio", "badge"] as const satisfies readonly Kind[];
-export type MeasuredKind = (typeof MEASURED)[number];
-export const isMeasured = (kind: Kind): kind is MeasuredKind => (MEASURED as readonly Kind[]).includes(kind);
+export const MEASURED = [COMPONENT_KIND.button, COMPONENT_KIND.extendedFab, COMPONENT_KIND.chip, COMPONENT_KIND.switch, COMPONENT_KIND.checkbox, COMPONENT_KIND.text, COMPONENT_KIND.splitButton, COMPONENT_KIND.radio, COMPONENT_KIND.badge] as const satisfies readonly ComponentKind[];
+export type MeasuredComponentKind = (typeof MEASURED)[number];
+export const isMeasured = (kind: ComponentKind): kind is MeasuredComponentKind => (MEASURED as readonly ComponentKind[]).includes(kind);
 
 /** Progress track thickness range in dp; Material's standard bar is 4 and its thick bar 8. */
 export const TRACK_MIN = 2;
@@ -1720,60 +1763,60 @@ export const isTrackThickness = (v: unknown): v is number => typeof v === "numbe
 /** The thickness actually drawn: a ring caps the value by its own diameter. */
 export const progressThickness = (it: Item): number => {
   const v = isTrackThickness(it.trackThickness) ? it.trackThickness : TRACK_DEFAULT;
-  return it.kind === KINDS.circularProgress ? Math.min(v, maxRingThickness(it.size ?? KIND_SPEC.circularProgress.w)) : v;
+  return it.kind === COMPONENT_KIND.circularProgress ? Math.min(v, maxRingThickness(it.size ?? KIND_SPEC.circularProgress.w)) : v;
 };
 
 export function sizeOf(it: Item, widths: Record<string, number>) {
   const s = KIND_SPEC[it.kind];
   const n = it.size ?? s.defSize ?? s.w;
   switch (it.kind) {
-    case KINDS.switch:
-    case KINDS.button:
+    case COMPONENT_KIND.switch:
+    case COMPONENT_KIND.button:
       return { w: it.size ?? widths[it.id] ?? s.w, h: s.h };
-    case KINDS.extendedFab:
-    case KINDS.chip:
-    case KINDS.checkbox:
-    case KINDS.splitButton:
-    case KINDS.radio:
+    case COMPONENT_KIND.extendedFab:
+    case COMPONENT_KIND.chip:
+    case COMPONENT_KIND.checkbox:
+    case COMPONENT_KIND.splitButton:
+    case COMPONENT_KIND.radio:
       return { w: widths[it.id] ?? 128, h: s.h };
-    case KINDS.badge:
+    case COMPONENT_KIND.badge:
       return { w: widths[it.id] ?? 16, h: it.label.trim() ? s.h : 6 };
-    case KINDS.fabMenu:
+    case COMPONENT_KIND.fabMenu:
       return { w: n, h: 56 + (it.tabs?.length ?? 0) * (FAB_MENU_ITEM_H + FAB_MENU_GAP) };
-    case KINDS.toolbar:
+    case COMPONENT_KIND.toolbar:
       return { w: toolbarWidth(it), h: s.h };
-    case KINDS.tabs:
+    case COMPONENT_KIND.tabs:
       return { w: n, h: s.h };
-    case KINDS.text:
+    case COMPONENT_KIND.text:
       return { w: widths[it.id] ?? 120, h: Math.round(n * 1.3) };
-    case KINDS.iconButton:
-    case KINDS.fab:
-    case KINDS.circularProgress:
-    case KINDS.loadingIndicator:
-    case KINDS.image:
+    case COMPONENT_KIND.iconButton:
+    case COMPONENT_KIND.fab:
+    case COMPONENT_KIND.circularProgress:
+    case COMPONENT_KIND.loadingIndicator:
+    case COMPONENT_KIND.image:
       return { w: n, h: n };
-    case KINDS.camera:
+    case COMPONENT_KIND.camera:
       return { w: n, h: it.size2 ?? Math.round((n * 4) / 3) };
-    case KINDS.map:
+    case COMPONENT_KIND.map:
       return { w: n, h: it.size2 ?? Math.round((n * 3) / 4) };
-    case KINDS.topAppBar:
+    case COMPONENT_KIND.topAppBar:
       /* the status-bar inset belongs to a phone: a bar wider than one has no status bar above it.
        * (An Android tablet does; the canvas leaves that to the prompt.) */
       return { w: n, h: 64 + (n > PHONE_W ? 0 : STATUS_BAR_H) };
-    case KINDS.searchBar:
-    case KINDS.bottomNav:
-    case KINDS.listItem:
-    case KINDS.textField:
-    case KINDS.select:
-    case KINDS.slider:
-    case KINDS.linearProgress:
-    case KINDS.divider:
+    case COMPONENT_KIND.searchBar:
+    case COMPONENT_KIND.bottomNav:
+    case COMPONENT_KIND.listItem:
+    case COMPONENT_KIND.textField:
+    case COMPONENT_KIND.select:
+    case COMPONENT_KIND.slider:
+    case COMPONENT_KIND.linearProgress:
+    case COMPONENT_KIND.divider:
       return { w: n, h: s.h };
-    case KINDS.card:
+    case COMPONENT_KIND.card:
       return { w: n, h: it.size2 ?? Math.round(n * 0.5875) };
-    case KINDS.box:
+    case COMPONENT_KIND.box:
       return { w: n, h: it.size2 ?? s.h };
-    case KINDS.navRail:
+    case COMPONENT_KIND.navRail:
       return { w: railWidth(it), h: it.size2 ?? s.h };
     default:
       return { w: s.w, h: s.h };
@@ -1785,42 +1828,42 @@ export function sizeOf(it: Item, widths: Record<string, number>) {
 export function baseRadii(it: Item): Radii {
   const s = KIND_SPEC[it.kind];
   switch (it.kind) {
-    case KINDS.box:
+    case COMPONENT_KIND.box:
       if (it.corners) return { ...it.corners };
     // falls through
-    case KINDS.bottomNav:
-    case KINDS.topAppBar:
-    case KINDS.tabs: {
+    case COMPONENT_KIND.bottomNav:
+    case COMPONENT_KIND.topAppBar:
+    case COMPONENT_KIND.tabs: {
       const t = it.radiusTop ?? 0;
       const b = it.radiusBottom ?? 0;
       return { tl: t, tr: t, bl: b, br: b };
     }
-    case KINDS.navRail: {
+    case COMPONENT_KIND.navRail: {
       /* a rail's corners are its left and right sides: radiusTop is the left pair, radiusBottom the right */
       const modalRadius = it.railExpanded && it.railModal ? 16 : 0;
       const l = it.radiusTop ?? modalRadius;
       const r = it.radiusBottom ?? modalRadius;
       return { tl: l, bl: l, tr: r, br: r };
     }
-    case KINDS.fab:
+    case COMPONENT_KIND.fab:
       return uniformRadii(scaleR(Math.round((it.size ?? 56) * 0.28)));
-    case KINDS.fabMenu:
+    case COMPONENT_KIND.fabMenu:
       return uniformRadii(0);
-    case KINDS.iconButton:
+    case COMPONENT_KIND.iconButton:
       return uniformRadii(scaleR((it.size ?? 48) / 2));
-    case KINDS.circularProgress:
-    case KINDS.loadingIndicator:
+    case COMPONENT_KIND.circularProgress:
+    case COMPONENT_KIND.loadingIndicator:
       return uniformRadii((it.size ?? 48) / 2);
-    case KINDS.card:
+    case COMPONENT_KIND.card:
       if (it.corners) return { ...it.corners };
     // falls through
-    case KINDS.image:
-    case KINDS.camera:
-    case KINDS.map:
+    case COMPONENT_KIND.image:
+    case COMPONENT_KIND.camera:
+    case COMPONENT_KIND.map:
       return uniformRadii(it.radiusTop ?? scaleR(s.radius));
-    case KINDS.badge:
-    case KINDS.radio:
-    case KINDS.splitButton:
+    case COMPONENT_KIND.badge:
+    case COMPONENT_KIND.radio:
+    case COMPONENT_KIND.splitButton:
       return uniformRadii(s.radius);
     default:
       return uniformRadii(scaleR(s.radius));
@@ -1837,7 +1880,7 @@ export const SCROLL_TAB_W = 96;
 /** a tab row scrolls once it holds more tabs than M3 fixes in place and they would not fit its width */
 export const isScrollableTabs = (it: Item) => {
   const n = it.tabs?.length ?? 0;
-  return it.kind === KINDS.tabs && n > FIXED_TABS_MAX && n * SCROLL_TAB_W > sizeOf(it, {}).w;
+  return it.kind === COMPONENT_KIND.tabs && n > FIXED_TABS_MAX && n * SCROLL_TAB_W > sizeOf(it, {}).w;
 };
 
 /** per-tab tap targets renumbered after the tab list changed; `to(j)` gives the old index j its new one, or nothing */
@@ -1863,7 +1906,7 @@ export function removeTabPatch(it: Item, i: number): Pick<Item, "tabs" | "select
   const sel = it.selected;
   const last = Math.max(0, tabs.length - 1);
   const selected =
-    sel === undefined ? undefined : sel > i ? sel - 1 : sel < i ? sel : it.kind === KINDS.select ? undefined : Math.min(i, last);
+    sel === undefined ? undefined : sel > i ? sel - 1 : sel < i ? sel : it.kind === COMPONENT_KIND.select ? undefined : Math.min(i, last);
   return { tabs, selected, actions: remapTabActions(it.actions, (j) => (j === i ? undefined : j > i ? j - 1 : j)) };
 }
 
@@ -1912,22 +1955,22 @@ export type IconSlot = { key: IconSlotKey; label: string; value: string | null }
 
 export function iconSlotsOf(it: Item): IconSlot[] {
   switch (it.kind) {
-    case KINDS.listItem:
-    case KINDS.topAppBar:
-    case KINDS.searchBar:
+    case COMPONENT_KIND.listItem:
+    case COMPONENT_KIND.topAppBar:
+    case COMPONENT_KIND.searchBar:
       return [
         { key: "icon", label: t("leading"), value: it.icon },
         { key: "icon2", label: t("trailing"), value: it.icon2 ?? null },
       ];
-    case KINDS.bottomNav:
-    case KINDS.navRail:
-    case KINDS.toolbar:
+    case COMPONENT_KIND.bottomNav:
+    case COMPONENT_KIND.navRail:
+    case COMPONENT_KIND.toolbar:
       return (it.tabs ?? []).map((t, i) => ({
         key: tabSlotKey(i),
         label: `${i + 1}`,
         value: t.icon || null,
       }));
-    case KINDS.fabMenu:
+    case COMPONENT_KIND.fabMenu:
       return [
         { key: "icon", label: t("icon"), value: it.icon },
         ...(it.tabs ?? []).map((t, i) => ({ key: tabSlotKey(i), label: `${i + 1}`, value: t.icon || null })),

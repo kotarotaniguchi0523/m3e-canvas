@@ -1,4 +1,5 @@
 import {
+  COMPONENT_KIND,
   actionSlotsOf,
   cardContentAlignOf,
   cardImageMaxOf,
@@ -20,7 +21,7 @@ import {
   type Group,
   type IconSlot,
   type Item,
-  type Kind,
+  type ComponentKind,
   type NavTab,
   type Place,
   type Radii,
@@ -29,7 +30,6 @@ import {
   type ToggleLook,
   type Variant,
 } from "./tokens";
-import { KINDS } from "./kind";
 
 export const INSPECTOR_SURFACE_KIND = {
   empty: "empty",
@@ -96,7 +96,7 @@ export type ItemFrameContext = {
 
 export type ItemInspectorModel = {
   id: string;
-  kind: Kind;
+  kind: ComponentKind;
   header: {
     label: string;
     variant: Variant;
@@ -436,7 +436,7 @@ export function selectInspectorSurface(input: SelectInspectorSurfaceInput): Insp
   }
 
   const standaloneRail =
-    selectedItem.kind === KINDS.navRail &&
+    selectedItem.kind === COMPONENT_KIND.navRail &&
     groups.some((group) => group.items.length === 1 && group.items[0]?.id === selectedItem.id);
 
   const actions = actionSlotsOf(selectedItem);
@@ -481,7 +481,7 @@ export function selectInspectorSurface(input: SelectInspectorSurfaceInput): Insp
           label: selectedItem.label,
           supporting: selectedItem.supporting,
           bold: !!selectedItem.bold,
-          contentAlign: selectedItem.kind === KINDS.card ? cardContentAlignOf(selectedItem) : selectedItem.contentAlign,
+          contentAlign: selectedItem.kind === COMPONENT_KIND.card ? cardContentAlignOf(selectedItem) : selectedItem.contentAlign,
           textColor: selectedItem.textColor,
         },
         ...(selectedItem.tabs
@@ -493,15 +493,15 @@ export function selectInspectorSurface(input: SelectInspectorSurfaceInput): Insp
               },
             }
           : {}),
-        ...(selectedItem.src !== undefined || selectedItem.kind === KINDS.card
+        ...(selectedItem.src !== undefined || selectedItem.kind === COMPONENT_KIND.card
           ? {
               media: {
                 src: selectedItem.src,
                 noImage: !!selectedItem.noImage,
                 imagePos: selectedItem.imagePos,
-                layout: selectedItem.kind === KINDS.card ? (selectedItem.noImage ? "none" : selectedItem.imagePos ?? "top") : "top",
-                imageSize: selectedItem.kind === KINDS.card ? cardImageSizeOf(selectedItem) : selectedItem.imageSize,
-                imageMax: selectedItem.kind === KINDS.card ? cardImageMaxOf(selectedItem) : undefined,
+                layout: selectedItem.kind === COMPONENT_KIND.card ? (selectedItem.noImage ? "none" : selectedItem.imagePos ?? "top") : "top",
+                imageSize: selectedItem.kind === COMPONENT_KIND.card ? cardImageSizeOf(selectedItem) : selectedItem.imageSize,
+                imageMax: selectedItem.kind === COMPONENT_KIND.card ? cardImageMaxOf(selectedItem) : undefined,
               },
             }
           : {}),
@@ -523,7 +523,7 @@ export function selectInspectorSurface(input: SelectInspectorSurfaceInput): Insp
           contained: selectedItem.contained,
           trackThickness: selectedItem.trackThickness,
         },
-        ...(selectedItem.kind === KINDS.navRail
+        ...(selectedItem.kind === COMPONENT_KIND.navRail
           ? {
               rail: {
                 mode: standaloneRail ? "standalone" : "nested",

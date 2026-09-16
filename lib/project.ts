@@ -1,4 +1,4 @@
-import { Doc, VARIANTS, isCardAlign, isCardImagePos, isKind, isPlace, isTextToken, isPlatform, isTrackThickness } from "./tokens";
+import { Doc, VARIANTS, isCardAlign, isCardImagePos, isComponentKind, isPlace, isTextToken, isPlatform, isTrackThickness } from "./tokens";
 
 /* A project file is the Doc as JSON, nothing more. Reading one back only checks
  * the shape the editor relies on; the same migrations that run on a saved
@@ -22,7 +22,7 @@ const validItem = (item: unknown) =>
   (item.contentAlign === undefined || isCardAlign(item.contentAlign)) &&
   (item.textColor === undefined || isTextToken(item.textColor)) &&
   typeof item.id === "string" &&
-  isKind(item.kind) &&
+  isComponentKind(item.kind) &&
   typeof item.label === "string" &&
   (typeof item.icon === "string" || item.icon === null) &&
   VARIANTS.some((variant) => variant.key === item.variant) &&

@@ -6,8 +6,8 @@ import {
   FAB_MENU_ITEM_H,
   H,
   Item,
-  KINDS,
-  Kind,
+  COMPONENT_KIND,
+  ComponentKind,
   isMeasured,
   NAV_BAR_H,
   Palette,
@@ -88,19 +88,19 @@ const ellipsis = {
   whiteSpace: "nowrap",
 } as const;
 
-const NO_BOX: Kind[] = [
-  "circularProgress",
-  "linearProgress",
-  "loadingIndicator",
-  "switch",
-  "checkbox",
-  "radio",
-  "slider",
-  "text",
-  "divider",
-  "splitButton",
-  "fabMenu",
-  "badge",
+const NO_BOX: ComponentKind[] = [
+  COMPONENT_KIND.circularProgress,
+  COMPONENT_KIND.linearProgress,
+  COMPONENT_KIND.loadingIndicator,
+  COMPONENT_KIND.switch,
+  COMPONENT_KIND.checkbox,
+  COMPONENT_KIND.radio,
+  COMPONENT_KIND.slider,
+  COMPONENT_KIND.text,
+  COMPONENT_KIND.divider,
+  COMPONENT_KIND.splitButton,
+  COMPONENT_KIND.fabMenu,
+  COMPONENT_KIND.badge,
 ];
 
 /** Padding follows M3: icon+label is tighter than label alone. */
@@ -386,23 +386,23 @@ function BadgeContent({ item, p }: { item: Item; p: Palette }) {
 /** Content for kinds that size to their text; rendered again offscreen to measure. */
 export function MeasuredContent({ item, p }: { item: Item; p: Palette }) {
   switch (item.kind) {
-    case KINDS.button:
+    case COMPONENT_KIND.button:
       return <ButtonContent item={item} />;
-    case KINDS.extendedFab:
+    case COMPONENT_KIND.extendedFab:
       return <ExtendedFabContent item={item} />;
-    case KINDS.chip:
+    case COMPONENT_KIND.chip:
       return <ChipContent item={item} p={p} />;
-    case KINDS.switch:
+    case COMPONENT_KIND.switch:
       return <SwitchContent item={item} p={p} />;
-    case KINDS.checkbox:
+    case COMPONENT_KIND.checkbox:
       return <CheckboxContent item={item} p={p} />;
-    case KINDS.text:
+    case COMPONENT_KIND.text:
       return <TextContent item={item} p={p} />;
-    case KINDS.splitButton:
+    case COMPONENT_KIND.splitButton:
       return <SplitButtonContent item={item} p={p} />;
-    case KINDS.radio:
+    case COMPONENT_KIND.radio:
       return <RadioContent item={item} p={p} />;
-    case KINDS.badge:
+    case COMPONENT_KIND.badge:
       return <BadgeContent item={item} p={p} />;
     default:
       return null;
@@ -418,7 +418,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
   if (isMeasured(item.kind)) return <MeasuredContent item={item} p={p} />;
 
   switch (item.kind) {
-    case KINDS.box:
+    case COMPONENT_KIND.box:
       return item.checked ? (
         <div style={{ display: "flex", justifyContent: "center", paddingTop: 16 }}>
           <div
@@ -433,7 +433,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         </div>
       ) : null;
 
-    case KINDS.iconButton: {
+    case COMPONENT_KIND.iconButton: {
       const s = item.size ?? 48;
       return (
         <div style={{ display: "grid", placeItems: "center", height: "100%" }}>
@@ -442,7 +442,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case KINDS.fab: {
+    case COMPONENT_KIND.fab: {
       const s = item.size ?? 56;
       return (
         <div style={{ display: "grid", placeItems: "center", height: "100%" }}>
@@ -451,7 +451,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case KINDS.topAppBar:
+    case COMPONENT_KIND.topAppBar:
       return (
         <div
           style={{
@@ -477,7 +477,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         </div>
       );
 
-    case KINDS.searchBar:
+    case COMPONENT_KIND.searchBar:
       return (
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 16px", height: "100%" }}>
           {item.icon && <Icon name={item.icon} size={24} color={p.onSurface} />}
@@ -488,7 +488,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         </div>
       );
 
-    case KINDS.card: {
+    case COMPONENT_KIND.card: {
       const pos = cardImagePosOf(item);
       const hasImage = !item.noImage;
       const padding = CARD_PADDING;
@@ -564,7 +564,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case KINDS.listItem: {
+    case COMPONENT_KIND.listItem: {
       const iconBg = item.iconFill === "none" ? null : (item.iconFill ?? "primaryContainer");
       return (
         <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "0 16px", height: "100%" }}>
@@ -595,7 +595,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case KINDS.dialog:
+    case COMPONENT_KIND.dialog:
       return (
         <div
           style={{
@@ -651,7 +651,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         </div>
       );
 
-    case KINDS.snackbar:
+    case COMPONENT_KIND.snackbar:
       return (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 8px 0 16px", height: "100%" }}>
           <div style={{ flex: 1, minWidth: 0, fontSize: 14, color: p.inverseOnSurface, ...ellipsis }}>
@@ -676,7 +676,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         </div>
       );
 
-    case KINDS.textField: {
+    case COMPONENT_KIND.textField: {
       const filled = item.variant === "filled";
       return (
         <div style={{ position: "relative", height: "100%" }}>
@@ -734,7 +734,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case KINDS.select: {
+    case COMPONENT_KIND.select: {
       /* a closed dropdown: the chosen option is the value and the label floats; with
        * nothing chosen the label sits in the field */
       const filled = item.variant === "filled";
@@ -775,7 +775,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case KINDS.slider: {
+    case COMPONENT_KIND.slider: {
       const v = Math.min(100, Math.max(0, item.value ?? 40)) / 100;
       const w = item.size ?? 280;
       const handleX = 2 + (w - 4) * v;
@@ -829,7 +829,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case KINDS.image:
+    case COMPONENT_KIND.image:
       if (item.src) {
         return (
           // eslint-disable-next-line @next/next/no-img-element
@@ -847,7 +847,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         </div>
       );
 
-    case KINDS.camera:
+    case COMPONENT_KIND.camera:
       /* a viewfinder: the live feed is dark, with focus brackets and a shutter row */
       return (
         <div style={{ position: "relative", height: "100%", color: p.inverseOnSurface }}>
@@ -880,7 +880,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         </div>
       );
 
-    case KINDS.map:
+    case COMPONENT_KIND.map:
       /* a stylised city: blocks on a light ground, two main roads and a river, one pin */
       return (
         <div style={{ position: "relative", height: "100%", overflow: "hidden" }}>
@@ -904,14 +904,14 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         </div>
       );
 
-    case KINDS.divider:
+    case COMPONENT_KIND.divider:
       return (
         <div style={{ display: "flex", alignItems: "center", height: "100%" }}>
           <div style={{ width: "100%", height: 1, background: p.outlineVariant }} />
         </div>
       );
 
-    case KINDS.navRail: {
+    case COMPONENT_KIND.navRail: {
       const tabs = item.tabs ?? [];
       const wide = isWideRail(item);
       const expanded = !!item.railExpanded;
@@ -996,7 +996,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case KINDS.bottomNav: {
+    case COMPONENT_KIND.bottomNav: {
       const tabs = item.tabs ?? [];
       return (
         <div
@@ -1059,7 +1059,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case KINDS.circularProgress:
+    case COMPONENT_KIND.circularProgress:
       return (
         <CircularProgress
           size={item.size ?? 48}
@@ -1071,7 +1071,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         />
       );
 
-    case KINDS.linearProgress:
+    case COMPONENT_KIND.linearProgress:
       return (
         <div style={{ display: "flex", alignItems: "center", height: "100%" }}>
           <LinearProgress
@@ -1085,7 +1085,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         </div>
       );
 
-    case KINDS.fabMenu: {
+    case COMPONENT_KIND.fabMenu: {
       const tabs = item.tabs ?? [];
       const filled = item.variant === "filled";
       const fabStyle = variantStyle(item.variant, p);
@@ -1135,7 +1135,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case KINDS.toolbar: {
+    case COMPONENT_KIND.toolbar: {
       const tabs = item.tabs ?? [];
       const vibrant = item.variant === "filled";
       return (
@@ -1160,7 +1160,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case KINDS.tabs: {
+    case COMPONENT_KIND.tabs: {
       const tabs = item.tabs ?? [];
       const scroll = isScrollableTabs(item);
       const offset = tabScroll ?? tabScrollOffset(item, sizeOf(item, {}).w);
@@ -1219,7 +1219,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case KINDS.loadingIndicator: {
+    case COMPONENT_KIND.loadingIndicator: {
       const s = item.size ?? 48;
       return (
         <LoadingIndicator
@@ -1237,49 +1237,49 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
 function boxStyle(item: Item, p: Palette): React.CSSProperties {
   if (NO_BOX.includes(item.kind)) return { background: "transparent", border: "none" };
   switch (item.kind) {
-    case KINDS.box: {
+    case COMPONENT_KIND.box: {
       const t = item.fill ?? "surfaceContainerLow";
       return { background: p[t], color: onToken(t, p), border: "none" };
     }
-    case KINDS.button:
-    case KINDS.iconButton:
-    case KINDS.fab:
-    case KINDS.extendedFab:
+    case COMPONENT_KIND.button:
+    case COMPONENT_KIND.iconButton:
+    case COMPONENT_KIND.fab:
+    case COMPONENT_KIND.extendedFab:
       return variantStyle(item.variant, p);
-    case KINDS.chip:
+    case COMPONENT_KIND.chip:
       if (item.checked) return { background: p.secondaryContainer, color: p.onSecondaryContainer, border: "none" };
       return item.variant === "outlined"
         ? { background: "transparent", color: p.onSurfaceVariant, border: `1px solid ${p.outlineVariant}` }
         : { background: p.surfaceContainerLow, color: p.onSurfaceVariant, border: "none" };
-    case KINDS.card:
+    case COMPONENT_KIND.card:
       return { background: p[cardFillOf(item)], border: item.variant === "outlined" ? `1px solid ${p.outlineVariant}` : "none" };
-    case KINDS.textField:
-    case KINDS.select:
+    case COMPONENT_KIND.textField:
+    case COMPONENT_KIND.select:
       return item.variant === "filled"
         ? { background: p.surfaceContainerHighest, border: "none", color: p.onSurface }
         : { background: p.surface, border: `1px solid ${p.outline}`, color: p.onSurface };
-    case KINDS.topAppBar:
-    case KINDS.bottomNav:
-    case KINDS.navRail:
+    case COMPONENT_KIND.topAppBar:
+    case COMPONENT_KIND.bottomNav:
+    case COMPONENT_KIND.navRail:
       return { background: p.surfaceContainer, border: "none", color: p.onSurface };
-    case KINDS.toolbar:
+    case COMPONENT_KIND.toolbar:
       return item.variant === "filled"
         ? { background: p.primaryContainer, border: "none", color: p.onPrimaryContainer }
         : { background: p.surfaceContainer, border: "none", color: p.onSurfaceVariant };
-    case KINDS.tabs:
+    case COMPONENT_KIND.tabs:
       return { background: p.surface, border: "none", color: p.onSurface };
-    case KINDS.searchBar:
+    case COMPONENT_KIND.searchBar:
       return { background: p.surfaceContainerHigh, border: "none", color: p.onSurface };
-    case KINDS.dialog:
+    case COMPONENT_KIND.dialog:
       return { background: p.surfaceContainerHigh, border: "none", color: p.onSurface };
-    case KINDS.snackbar:
+    case COMPONENT_KIND.snackbar:
       return { background: p.inverseSurface, border: "none", color: p.inverseOnSurface };
-    case KINDS.image:
-    case KINDS.map:
+    case COMPONENT_KIND.image:
+    case COMPONENT_KIND.map:
       return { background: p.surfaceContainerHighest, border: "none" };
-    case KINDS.camera:
+    case COMPONENT_KIND.camera:
       return { background: p.inverseSurface, border: "none", color: p.inverseOnSurface };
-    case KINDS.listItem: {
+    case COMPONENT_KIND.listItem: {
       const t = item.fill ?? "surfaceContainerLow";
       return { background: p[t], border: "none", color: onToken(t, p) };
     }
@@ -1291,21 +1291,21 @@ function boxStyle(item: Item, p: Palette): React.CSSProperties {
 function shadowOf(item: Item): string {
   if (NO_BOX.includes(item.kind)) return "none";
   switch (item.kind) {
-    case KINDS.navRail:
+    case COMPONENT_KIND.navRail:
       return item.railModal && item.railExpanded ? "0 2px 6px rgba(0,0,0,0.16), 0 1px 2px rgba(0,0,0,0.10)" : "none";
-    case KINDS.button:
-    case KINDS.iconButton:
-    case KINDS.extendedFab:
+    case COMPONENT_KIND.button:
+    case COMPONENT_KIND.iconButton:
+    case COMPONENT_KIND.extendedFab:
       return variantShadow(item.variant);
-    case KINDS.fab:
+    case COMPONENT_KIND.fab:
       return "0 3px 8px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.12)";
-    case KINDS.card:
+    case COMPONENT_KIND.card:
       return item.variant === "elevated" ? "0 1px 3px rgba(0,0,0,0.20), 0 2px 6px rgba(0,0,0,0.10)" : "none";
-    case KINDS.dialog:
+    case COMPONENT_KIND.dialog:
       return "0 8px 24px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.10)";
-    case KINDS.snackbar:
+    case COMPONENT_KIND.snackbar:
       return "0 3px 8px rgba(0,0,0,0.18)";
-    case KINDS.toolbar:
+    case COMPONENT_KIND.toolbar:
       return "0 2px 6px rgba(0,0,0,0.14), 0 1px 2px rgba(0,0,0,0.10)";
     default:
       return "none";
@@ -1345,18 +1345,18 @@ export function M3Node({
   tabScroll?: number;
 }) {
   const reducedMotion = useReducedMotion();
-  const instantRail = reducedMotion && item.kind === KINDS.navRail && isWideRail(item);
+  const instantRail = reducedMotion && item.kind === COMPONENT_KIND.navRail && isWideRail(item);
   const radiusTransition = instantRail ? { duration: 0 } : RADIUS_TWEEN;
   const r = radii ?? baseRadii(item);
   const size = sizeOf(item, widths);
-  const measured = isMeasured(item.kind) && !((item.kind === KINDS.switch || item.kind === KINDS.button) && item.size);
-  const clips = !NO_BOX.includes(item.kind) && item.kind !== KINDS.textField && item.kind !== KINDS.select;
+  const measured = isMeasured(item.kind) && !((item.kind === COMPONENT_KIND.switch || item.kind === COMPONENT_KIND.button) && item.size);
+  const clips = !NO_BOX.includes(item.kind) && item.kind !== COMPONENT_KIND.textField && item.kind !== COMPONENT_KIND.select;
 
   return (
     <motion.div
       data-node={item.id}
       data-kind={item.kind}
-      data-wide-rail={item.kind === KINDS.navRail && isWideRail(item) ? "true" : undefined}
+      data-wide-rail={item.kind === COMPONENT_KIND.navRail && isWideRail(item) ? "true" : undefined}
       onPointerDown={onPointerDown}
       initial={false}
       animate={{
@@ -1417,8 +1417,8 @@ export function M3Static({
 }) {
   const r = radii ?? baseRadii(item);
   const size = sizeOf(item, {});
-  const measured = isMeasured(item.kind) && !((item.kind === KINDS.switch || item.kind === KINDS.button) && item.size);
-  const clips = !NO_BOX.includes(item.kind) && item.kind !== KINDS.textField && item.kind !== KINDS.select;
+  const measured = isMeasured(item.kind) && !((item.kind === COMPONENT_KIND.switch || item.kind === COMPONENT_KIND.button) && item.size);
+  const clips = !NO_BOX.includes(item.kind) && item.kind !== COMPONENT_KIND.textField && item.kind !== COMPONENT_KIND.select;
   return (
     <div
       style={{

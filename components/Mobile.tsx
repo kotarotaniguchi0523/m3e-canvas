@@ -1,7 +1,7 @@
 "use client";
 
 import { LazyMotion, domMax, m, useDragControls } from "motion/react";
-import { CONTRASTS, Contrast, FONTS, KIND_SPEC, KINDS, NavTab, PALETTES, Palette, SHAPES, ShapeScale, Theme, defaultTabsFor, isToggleableKind, tabSlotKey } from "@/lib/tokens";
+import { COMPONENT_KIND, CONTRASTS, Contrast, FONTS, KIND_SPEC, NavTab, PALETTES, Palette, SHAPES, ShapeScale, Theme, defaultTabsFor, isToggleableKind, tabSlotKey } from "@/lib/tokens";
 import { ensureFontLoaded } from "@/lib/theme";
 import { KIND_TEXT, LANGS, Lang, t, useLang } from "@/lib/i18n";
 import { IconPickerDisclosure } from "./IconPickerDisclosure";
@@ -125,7 +125,7 @@ export function MobileInspector({
     dispatch({ kind: "set-tabs", tabs: next, selected: tabsModel?.selected !== undefined && tabsModel.selected >= n ? undefined : tabsModel?.selected, actions: tabsModel?.actions });
   };
   /* a dropdown's rows are options: no icons, and one of them may be the initial value */
-  const isSelect = model.kind === KINDS.select;
+  const isSelect = model.kind === COMPONENT_KIND.select;
 
   return (
     <div>
@@ -155,7 +155,7 @@ export function MobileInspector({
             {spec.hasLabel && (
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 <Field value={text.label} onChange={(label) => dispatch({ kind: "set-label", value: label })} placeholder={t("label", lang)} p={p} icon="short_text" height={48} />
-                {model.kind === KINDS.text && (
+                {model.kind === COMPONENT_KIND.text && (
                   <IconBtn icon="format_bold" p={p} size={48} on={text.bold} onClick={() => dispatch({ kind: "set-bold", value: !text.bold })} title={t("bold", lang)} />
                 )}
               </div>
@@ -164,7 +164,7 @@ export function MobileInspector({
               <Field
                 value={text.supporting ?? ""}
                 onChange={(supporting) => dispatch({ kind: "set-supporting", value: supporting })}
-                placeholder={model.kind === KINDS.snackbar ? t("action", lang) : t("supporting", lang)}
+                placeholder={model.kind === COMPONENT_KIND.snackbar ? t("action", lang) : t("supporting", lang)}
                 p={p}
                 icon="notes"
                 height={48}
@@ -176,9 +176,9 @@ export function MobileInspector({
 
       {spec.hasTabs && tabsModel && (
         <Row icon={isSelect ? "list" : "view_column"} label={t(isSelect ? "options" : "tabs", lang)} p={p}>
-          {!isSelect && model.kind !== KINDS.tabs && (
+          {!isSelect && model.kind !== COMPONENT_KIND.tabs && (
             <Segmented
-              options={(model.kind === KINDS.toolbar ? [2, 3, 4, 5, 6] : [2, 3, 4, 5]).map((n) => ({ key: String(n), label: String(n) }))}
+              options={(model.kind === COMPONENT_KIND.toolbar ? [2, 3, 4, 5, 6] : [2, 3, 4, 5]).map((n) => ({ key: String(n), label: String(n) }))}
               value={String(tabs.length)}
               onChange={(k) => setTabCount(Number(k))}
               p={p}
@@ -198,10 +198,10 @@ export function MobileInspector({
                     title={t("selectedOption", lang)}
                   />
                 )}
-                {model.kind !== KINDS.tabs && !isSelect && (
+                {model.kind !== COMPONENT_KIND.tabs && !isSelect && (
                   <IconPickerDisclosure name={`mobile-tabs-${model.id}`} value={tab.icon || null} label={t("changeIcon", lang)} palette={p} size={48} onChange={(icon) => dispatch({ kind: "set-icon-slot", slot: tabSlotKey(i), value: icon })} />
                 )}
-                {model.kind !== KINDS.toolbar && (
+                {model.kind !== COMPONENT_KIND.toolbar && (
                   <Field value={tab.label} onChange={(label) => dispatch({ kind: "set-tabs", tabs: tabs.map((x, j) => (j === i ? { ...x, label } : x)), selected: tabsModel.selected, actions: tabsModel.actions })} placeholder={t("label", lang)} p={p} height={48} />
                 )}
                 {isSelect && tabs.length > 1 && (
@@ -258,8 +258,8 @@ export function MobileInspector({
             on={!!state.checked}
             onChange={(checked) => dispatch({ kind: "set-checked", value: checked })}
             p={p}
-            icon={model.kind === KINDS.chip ? "check_circle" : model.kind === KINDS.box ? "drag_handle" : "toggle_on"}
-            label={model.kind === KINDS.chip ? t("selected", lang) : model.kind === KINDS.box ? t("handle", lang) : t("on", lang)}
+            icon={model.kind === COMPONENT_KIND.chip ? "check_circle" : model.kind === COMPONENT_KIND.box ? "drag_handle" : "toggle_on"}
+            label={model.kind === COMPONENT_KIND.chip ? t("selected", lang) : model.kind === COMPONENT_KIND.box ? t("handle", lang) : t("on", lang)}
           />
         </Row>
       )}
