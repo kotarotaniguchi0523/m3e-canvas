@@ -52,6 +52,7 @@ import {
   Kind,
   KIND_ORDER,
   KIND_SPEC,
+  KINDS,
   collapseFree,
   layoutOf,
   lerp,
@@ -230,7 +231,7 @@ const SEED_FRAMES: Frame[] = [{ id: "seedF1", name: "Home", x: 0, y: 0 }];
 function migrateGroups(groups: Group[], frames: Frame[]): Group[] {
   const oldNavH = KIND_SPEC.bottomNav.h - NAV_BAR_H;
   return groups.map((g) => {
-    if (g.items.length !== 1 || g.items[0].kind !== "bottomNav") return g;
+    if (g.items.length !== 1 || g.items[0].kind !== KINDS.bottomNav) return g;
     const f = frames.find((fr) => {
       const r = frameRect(fr);
       return g.x >= r.l - 1 && g.x <= r.r && g.y === r.b - oldNavH;
@@ -1834,7 +1835,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
     };
     /* a copied modal rail starts collapsed and standard: a screen shows one modal rail, and
        the copy sits inward of the edge the original remembered */
-    if (copy.kind === "navRail" && copy.railModal) {
+    if (copy.kind === KINDS.navRail && copy.railModal) {
       copy.railModal = false;
       copy.railExpanded = false;
       delete copy[railExpansionSide];
@@ -3549,9 +3550,9 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
                   boxSizing: "border-box",
                   border:
                     it.variant === "outlined" &&
-                    (it.kind === "button" ||
-                      it.kind === "chip" ||
-                      it.kind === "extendedFab")
+                    (it.kind === KINDS.button ||
+                      it.kind === KINDS.chip ||
+                      it.kind === KINDS.extendedFab)
                       ? "1px solid transparent"
                       : "none",
                 }}

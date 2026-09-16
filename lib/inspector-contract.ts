@@ -29,6 +29,7 @@ import {
   type ToggleLook,
   type Variant,
 } from "./tokens";
+import { KINDS } from "./kind";
 
 /**
  * The Inspector route is a view concern, not a second copy of editor state.
@@ -404,7 +405,7 @@ export function selectInspectorSurface(input: SelectInspectorSurfaceInput): Insp
   }
 
   const standaloneRail =
-    selectedItem.kind === "navRail" &&
+    selectedItem.kind === KINDS.navRail &&
     groups.some((group) => group.items.length === 1 && group.items[0]?.id === selectedItem.id);
 
   const actions = actionSlotsOf(selectedItem);
@@ -449,7 +450,7 @@ export function selectInspectorSurface(input: SelectInspectorSurfaceInput): Insp
           label: selectedItem.label,
           supporting: selectedItem.supporting,
           bold: !!selectedItem.bold,
-          contentAlign: selectedItem.kind === "card" ? cardContentAlignOf(selectedItem) : selectedItem.contentAlign,
+          contentAlign: selectedItem.kind === KINDS.card ? cardContentAlignOf(selectedItem) : selectedItem.contentAlign,
           textColor: selectedItem.textColor,
         },
         ...(selectedItem.tabs
@@ -461,15 +462,15 @@ export function selectInspectorSurface(input: SelectInspectorSurfaceInput): Insp
               },
             }
           : {}),
-        ...(selectedItem.src !== undefined || selectedItem.kind === "card"
+        ...(selectedItem.src !== undefined || selectedItem.kind === KINDS.card
           ? {
               media: {
                 src: selectedItem.src,
                 noImage: !!selectedItem.noImage,
                 imagePos: selectedItem.imagePos,
-                layout: selectedItem.kind === "card" ? (selectedItem.noImage ? "none" : selectedItem.imagePos ?? "top") : "top",
-                imageSize: selectedItem.kind === "card" ? cardImageSizeOf(selectedItem) : selectedItem.imageSize,
-                imageMax: selectedItem.kind === "card" ? cardImageMaxOf(selectedItem) : undefined,
+                layout: selectedItem.kind === KINDS.card ? (selectedItem.noImage ? "none" : selectedItem.imagePos ?? "top") : "top",
+                imageSize: selectedItem.kind === KINDS.card ? cardImageSizeOf(selectedItem) : selectedItem.imageSize,
+                imageMax: selectedItem.kind === KINDS.card ? cardImageMaxOf(selectedItem) : undefined,
               },
             }
           : {}),
@@ -491,7 +492,7 @@ export function selectInspectorSurface(input: SelectInspectorSurfaceInput): Insp
           contained: selectedItem.contained,
           trackThickness: selectedItem.trackThickness,
         },
-        ...(selectedItem.kind === "navRail"
+        ...(selectedItem.kind === KINDS.navRail
           ? {
               rail: {
                 mode: standaloneRail ? "standalone" : "nested",

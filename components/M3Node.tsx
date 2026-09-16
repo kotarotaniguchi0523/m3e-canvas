@@ -6,6 +6,7 @@ import {
   FAB_MENU_ITEM_H,
   H,
   Item,
+  KINDS,
   Kind,
   isMeasured,
   NAV_BAR_H,
@@ -385,23 +386,23 @@ function BadgeContent({ item, p }: { item: Item; p: Palette }) {
 /** Content for kinds that size to their text; rendered again offscreen to measure. */
 export function MeasuredContent({ item, p }: { item: Item; p: Palette }) {
   switch (item.kind) {
-    case "button":
+    case KINDS.button:
       return <ButtonContent item={item} />;
-    case "extendedFab":
+    case KINDS.extendedFab:
       return <ExtendedFabContent item={item} />;
-    case "chip":
+    case KINDS.chip:
       return <ChipContent item={item} p={p} />;
-    case "switch":
+    case KINDS.switch:
       return <SwitchContent item={item} p={p} />;
-    case "checkbox":
+    case KINDS.checkbox:
       return <CheckboxContent item={item} p={p} />;
-    case "text":
+    case KINDS.text:
       return <TextContent item={item} p={p} />;
-    case "splitButton":
+    case KINDS.splitButton:
       return <SplitButtonContent item={item} p={p} />;
-    case "radio":
+    case KINDS.radio:
       return <RadioContent item={item} p={p} />;
-    case "badge":
+    case KINDS.badge:
       return <BadgeContent item={item} p={p} />;
     default:
       return null;
@@ -417,7 +418,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
   if (isMeasured(item.kind)) return <MeasuredContent item={item} p={p} />;
 
   switch (item.kind) {
-    case "box":
+    case KINDS.box:
       return item.checked ? (
         <div style={{ display: "flex", justifyContent: "center", paddingTop: 16 }}>
           <div
@@ -432,7 +433,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         </div>
       ) : null;
 
-    case "iconButton": {
+    case KINDS.iconButton: {
       const s = item.size ?? 48;
       return (
         <div style={{ display: "grid", placeItems: "center", height: "100%" }}>
@@ -441,7 +442,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case "fab": {
+    case KINDS.fab: {
       const s = item.size ?? 56;
       return (
         <div style={{ display: "grid", placeItems: "center", height: "100%" }}>
@@ -450,7 +451,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case "topAppBar":
+    case KINDS.topAppBar:
       return (
         <div
           style={{
@@ -476,7 +477,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         </div>
       );
 
-    case "searchBar":
+    case KINDS.searchBar:
       return (
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "0 16px", height: "100%" }}>
           {item.icon && <Icon name={item.icon} size={24} color={p.onSurface} />}
@@ -487,7 +488,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         </div>
       );
 
-    case "card": {
+    case KINDS.card: {
       const pos = cardImagePosOf(item);
       const hasImage = !item.noImage;
       const padding = CARD_PADDING;
@@ -563,7 +564,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case "listItem": {
+    case KINDS.listItem: {
       const iconBg = item.iconFill === "none" ? null : (item.iconFill ?? "primaryContainer");
       return (
         <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "0 16px", height: "100%" }}>
@@ -594,7 +595,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case "dialog":
+    case KINDS.dialog:
       return (
         <div
           style={{
@@ -650,7 +651,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         </div>
       );
 
-    case "snackbar":
+    case KINDS.snackbar:
       return (
         <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 8px 0 16px", height: "100%" }}>
           <div style={{ flex: 1, minWidth: 0, fontSize: 14, color: p.inverseOnSurface, ...ellipsis }}>
@@ -675,7 +676,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         </div>
       );
 
-    case "textField": {
+    case KINDS.textField: {
       const filled = item.variant === "filled";
       return (
         <div style={{ position: "relative", height: "100%" }}>
@@ -733,7 +734,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case "select": {
+    case KINDS.select: {
       /* a closed dropdown: the chosen option is the value and the label floats; with
        * nothing chosen the label sits in the field */
       const filled = item.variant === "filled";
@@ -774,7 +775,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case "slider": {
+    case KINDS.slider: {
       const v = Math.min(100, Math.max(0, item.value ?? 40)) / 100;
       const w = item.size ?? 280;
       const handleX = 2 + (w - 4) * v;
@@ -828,7 +829,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case "image":
+    case KINDS.image:
       if (item.src) {
         return (
           // eslint-disable-next-line @next/next/no-img-element
@@ -846,7 +847,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         </div>
       );
 
-    case "camera":
+    case KINDS.camera:
       /* a viewfinder: the live feed is dark, with focus brackets and a shutter row */
       return (
         <div style={{ position: "relative", height: "100%", color: p.inverseOnSurface }}>
@@ -879,7 +880,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         </div>
       );
 
-    case "map":
+    case KINDS.map:
       /* a stylised city: blocks on a light ground, two main roads and a river, one pin */
       return (
         <div style={{ position: "relative", height: "100%", overflow: "hidden" }}>
@@ -903,14 +904,14 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         </div>
       );
 
-    case "divider":
+    case KINDS.divider:
       return (
         <div style={{ display: "flex", alignItems: "center", height: "100%" }}>
           <div style={{ width: "100%", height: 1, background: p.outlineVariant }} />
         </div>
       );
 
-    case "navRail": {
+    case KINDS.navRail: {
       const tabs = item.tabs ?? [];
       const wide = isWideRail(item);
       const expanded = !!item.railExpanded;
@@ -995,7 +996,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case "bottomNav": {
+    case KINDS.bottomNav: {
       const tabs = item.tabs ?? [];
       return (
         <div
@@ -1058,7 +1059,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case "circularProgress":
+    case KINDS.circularProgress:
       return (
         <CircularProgress
           size={item.size ?? 48}
@@ -1070,7 +1071,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         />
       );
 
-    case "linearProgress":
+    case KINDS.linearProgress:
       return (
         <div style={{ display: "flex", alignItems: "center", height: "100%" }}>
           <LinearProgress
@@ -1084,7 +1085,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
         </div>
       );
 
-    case "fabMenu": {
+    case KINDS.fabMenu: {
       const tabs = item.tabs ?? [];
       const filled = item.variant === "filled";
       const fabStyle = variantStyle(item.variant, p);
@@ -1134,7 +1135,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case "toolbar": {
+    case KINDS.toolbar: {
       const tabs = item.tabs ?? [];
       const vibrant = item.variant === "filled";
       return (
@@ -1159,7 +1160,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case "tabs": {
+    case KINDS.tabs: {
       const tabs = item.tabs ?? [];
       const scroll = isScrollableTabs(item);
       const offset = tabScroll ?? tabScrollOffset(item, sizeOf(item, {}).w);
@@ -1218,7 +1219,7 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
       );
     }
 
-    case "loadingIndicator": {
+    case KINDS.loadingIndicator: {
       const s = item.size ?? 48;
       return (
         <LoadingIndicator
@@ -1236,49 +1237,49 @@ function Body({ item, p, tabScroll }: { item: Item; p: Palette; tabScroll?: numb
 function boxStyle(item: Item, p: Palette): React.CSSProperties {
   if (NO_BOX.includes(item.kind)) return { background: "transparent", border: "none" };
   switch (item.kind) {
-    case "box": {
+    case KINDS.box: {
       const t = item.fill ?? "surfaceContainerLow";
       return { background: p[t], color: onToken(t, p), border: "none" };
     }
-    case "button":
-    case "iconButton":
-    case "fab":
-    case "extendedFab":
+    case KINDS.button:
+    case KINDS.iconButton:
+    case KINDS.fab:
+    case KINDS.extendedFab:
       return variantStyle(item.variant, p);
-    case "chip":
+    case KINDS.chip:
       if (item.checked) return { background: p.secondaryContainer, color: p.onSecondaryContainer, border: "none" };
       return item.variant === "outlined"
         ? { background: "transparent", color: p.onSurfaceVariant, border: `1px solid ${p.outlineVariant}` }
         : { background: p.surfaceContainerLow, color: p.onSurfaceVariant, border: "none" };
-    case "card":
+    case KINDS.card:
       return { background: p[cardFillOf(item)], border: item.variant === "outlined" ? `1px solid ${p.outlineVariant}` : "none" };
-    case "textField":
-    case "select":
+    case KINDS.textField:
+    case KINDS.select:
       return item.variant === "filled"
         ? { background: p.surfaceContainerHighest, border: "none", color: p.onSurface }
         : { background: p.surface, border: `1px solid ${p.outline}`, color: p.onSurface };
-    case "topAppBar":
-    case "bottomNav":
-    case "navRail":
+    case KINDS.topAppBar:
+    case KINDS.bottomNav:
+    case KINDS.navRail:
       return { background: p.surfaceContainer, border: "none", color: p.onSurface };
-    case "toolbar":
+    case KINDS.toolbar:
       return item.variant === "filled"
         ? { background: p.primaryContainer, border: "none", color: p.onPrimaryContainer }
         : { background: p.surfaceContainer, border: "none", color: p.onSurfaceVariant };
-    case "tabs":
+    case KINDS.tabs:
       return { background: p.surface, border: "none", color: p.onSurface };
-    case "searchBar":
+    case KINDS.searchBar:
       return { background: p.surfaceContainerHigh, border: "none", color: p.onSurface };
-    case "dialog":
+    case KINDS.dialog:
       return { background: p.surfaceContainerHigh, border: "none", color: p.onSurface };
-    case "snackbar":
+    case KINDS.snackbar:
       return { background: p.inverseSurface, border: "none", color: p.inverseOnSurface };
-    case "image":
-    case "map":
+    case KINDS.image:
+    case KINDS.map:
       return { background: p.surfaceContainerHighest, border: "none" };
-    case "camera":
+    case KINDS.camera:
       return { background: p.inverseSurface, border: "none", color: p.inverseOnSurface };
-    case "listItem": {
+    case KINDS.listItem: {
       const t = item.fill ?? "surfaceContainerLow";
       return { background: p[t], border: "none", color: onToken(t, p) };
     }
@@ -1290,21 +1291,21 @@ function boxStyle(item: Item, p: Palette): React.CSSProperties {
 function shadowOf(item: Item): string {
   if (NO_BOX.includes(item.kind)) return "none";
   switch (item.kind) {
-    case "navRail":
+    case KINDS.navRail:
       return item.railModal && item.railExpanded ? "0 2px 6px rgba(0,0,0,0.16), 0 1px 2px rgba(0,0,0,0.10)" : "none";
-    case "button":
-    case "iconButton":
-    case "extendedFab":
+    case KINDS.button:
+    case KINDS.iconButton:
+    case KINDS.extendedFab:
       return variantShadow(item.variant);
-    case "fab":
+    case KINDS.fab:
       return "0 3px 8px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.12)";
-    case "card":
+    case KINDS.card:
       return item.variant === "elevated" ? "0 1px 3px rgba(0,0,0,0.20), 0 2px 6px rgba(0,0,0,0.10)" : "none";
-    case "dialog":
+    case KINDS.dialog:
       return "0 8px 24px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.10)";
-    case "snackbar":
+    case KINDS.snackbar:
       return "0 3px 8px rgba(0,0,0,0.18)";
-    case "toolbar":
+    case KINDS.toolbar:
       return "0 2px 6px rgba(0,0,0,0.14), 0 1px 2px rgba(0,0,0,0.10)";
     default:
       return "none";
@@ -1344,18 +1345,18 @@ export function M3Node({
   tabScroll?: number;
 }) {
   const reducedMotion = useReducedMotion();
-  const instantRail = reducedMotion && item.kind === "navRail" && isWideRail(item);
+  const instantRail = reducedMotion && item.kind === KINDS.navRail && isWideRail(item);
   const radiusTransition = instantRail ? { duration: 0 } : RADIUS_TWEEN;
   const r = radii ?? baseRadii(item);
   const size = sizeOf(item, widths);
-  const measured = isMeasured(item.kind) && !((item.kind === "switch" || item.kind === "button") && item.size);
-  const clips = !NO_BOX.includes(item.kind) && item.kind !== "textField" && item.kind !== "select";
+  const measured = isMeasured(item.kind) && !((item.kind === KINDS.switch || item.kind === KINDS.button) && item.size);
+  const clips = !NO_BOX.includes(item.kind) && item.kind !== KINDS.textField && item.kind !== KINDS.select;
 
   return (
     <motion.div
       data-node={item.id}
       data-kind={item.kind}
-      data-wide-rail={item.kind === "navRail" && isWideRail(item) ? "true" : undefined}
+      data-wide-rail={item.kind === KINDS.navRail && isWideRail(item) ? "true" : undefined}
       onPointerDown={onPointerDown}
       initial={false}
       animate={{
@@ -1416,8 +1417,8 @@ export function M3Static({
 }) {
   const r = radii ?? baseRadii(item);
   const size = sizeOf(item, {});
-  const measured = isMeasured(item.kind) && !((item.kind === "switch" || item.kind === "button") && item.size);
-  const clips = !NO_BOX.includes(item.kind) && item.kind !== "textField" && item.kind !== "select";
+  const measured = isMeasured(item.kind) && !((item.kind === KINDS.switch || item.kind === KINDS.button) && item.size);
+  const clips = !NO_BOX.includes(item.kind) && item.kind !== KINDS.textField && item.kind !== KINDS.select;
   return (
     <div
       style={{

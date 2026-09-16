@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { Kind } from "./tokens";
+import { KINDS, type Kind } from "./kind";
 
 export type Lang = "ja" | "en" | "zh" | "ko";
 export const LANGS: { key: Lang; label: string }[] = [
@@ -34,12 +34,12 @@ export const SEED_TEXT: Record<Lang, { favorite: string; share: string; inbox: s
 export function translateDefaultText(value: string, kind: Kind, field: "label" | "supporting" | "tab", lang: Lang): string {
   for (const { key: from } of LANGS) {
     if (field === "tab") {
-      const labels = (l: Lang) => kind === "tabs" ? TAB_LABELS[l] : kind === "select" ? SELECT_OPTIONS[l] : (kind === "fabMenu" ? FAB_MENU_TABS[l] : NAV_TABS[l]).map((tab) => tab.label);
+      const labels = (l: Lang) => kind === KINDS.tabs ? TAB_LABELS[l] : kind === KINDS.select ? SELECT_OPTIONS[l] : (kind === KINDS.fabMenu ? FAB_MENU_TABS[l] : NAV_TABS[l]).map((tab) => tab.label);
       const index = labels(from).indexOf(value);
       if (index >= 0) return labels(lang)[index] ?? value;
     } else {
       if (value && value === KIND_TEXT[from][kind]?.[field]) return KIND_TEXT[lang][kind]?.[field] ?? value;
-      const keys: (keyof typeof SEED_TEXT.en)[] = field === "supporting" ? ["supporting"] : kind === "button" ? ["favorite", "share", "start"] : kind === "listItem" ? ["inbox", "starred", "archive"] : [];
+      const keys: (keyof typeof SEED_TEXT.en)[] = field === "supporting" ? ["supporting"] : kind === KINDS.button ? ["favorite", "share", "start"] : kind === KINDS.listItem ? ["inbox", "starred", "archive"] : [];
       for (const key of keys) {
         if (value === SEED_TEXT[from][key]) return SEED_TEXT[lang][key];
       }

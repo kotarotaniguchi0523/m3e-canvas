@@ -1,65 +1,65 @@
-import { CONTENT_W, PHONE_W, VARIANTS, type Kind, type Variant, contentWidth, halfWidth } from "./tokens";
+import { CONTENT_W, KINDS, PHONE_W, VARIANTS, type Kind, type Variant, contentWidth, halfWidth } from "./tokens";
 import { t } from "./i18n";
 
 export function variantsOf(kind: Kind): { key: Variant; label: string }[] {
   const variants = VARIANTS.map((v) => ({ ...v, label: t(v.key) }));
   switch (kind) {
-    case "card":
+    case KINDS.card:
       return [
         { key: "tonal", label: t("filled") },
         { key: "elevated", label: t("elevated") },
         { key: "outlined", label: t("outlined") },
       ];
-    case "textField":
-    case "select":
+    case KINDS.textField:
+    case KINDS.select:
       return [
         { key: "outlined", label: t("outlined") },
         { key: "filled", label: t("filled") },
       ];
-    case "chip":
+    case KINDS.chip:
       return [
         { key: "outlined", label: t("outlined") },
         { key: "tonal", label: t("elevated") },
       ];
-    case "fab":
-    case "extendedFab":
-    case "fabMenu":
+    case KINDS.fab:
+    case KINDS.extendedFab:
+    case KINDS.fabMenu:
       return variants.filter((v) => v.key !== "text" && v.key !== "elevated" && v.key !== "outlined");
-    case "splitButton":
+    case KINDS.splitButton:
       return variants.filter((v) => v.key !== "text");
-    case "toolbar":
+    case KINDS.toolbar:
       return [
         { key: "tonal", label: t("standard") },
         { key: "filled", label: t("vibrant") },
       ];
-    case "iconButton":
+    case KINDS.iconButton:
       return variants.filter((v) => v.key !== "elevated" && v.key !== "text").concat({
         key: "text",
         label: t("standard"),
       });
-    case "box":
-    case "button":
-    case "topAppBar":
-    case "bottomNav":
-    case "navRail":
-    case "searchBar":
-    case "listItem":
-    case "dialog":
-    case "snackbar":
-    case "switch":
-    case "checkbox":
-    case "slider":
-    case "text":
-    case "image":
-    case "camera":
-    case "map":
-    case "divider":
-    case "loadingIndicator":
-    case "linearProgress":
-    case "circularProgress":
-    case "tabs":
-    case "radio":
-    case "badge":
+    case KINDS.box:
+    case KINDS.button:
+    case KINDS.topAppBar:
+    case KINDS.bottomNav:
+    case KINDS.navRail:
+    case KINDS.searchBar:
+    case KINDS.listItem:
+    case KINDS.dialog:
+    case KINDS.snackbar:
+    case KINDS.switch:
+    case KINDS.checkbox:
+    case KINDS.slider:
+    case KINDS.text:
+    case KINDS.image:
+    case KINDS.camera:
+    case KINDS.map:
+    case KINDS.divider:
+    case KINDS.loadingIndicator:
+    case KINDS.linearProgress:
+    case KINDS.circularProgress:
+    case KINDS.tabs:
+    case KINDS.radio:
+    case KINDS.badge:
       return variants;
   }
 }

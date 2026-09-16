@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { KINDS } from "@/lib/tokens";
 import type { IconSlotKey, Item } from "@/lib/tokens";
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, useReducedMotion, useIsPresent } from "motion/react";
 import type { TargetAndTransition, Variants } from "motion/react";
@@ -222,7 +223,7 @@ function Tappable({
     window.addEventListener("pointerup", end);
     window.addEventListener("pointercancel", end);
   };
-  const live = !!onTap || !!onPick || (isTappableKind(item.kind) && item.kind !== "text");
+  const live = !!onTap || !!onPick || (isTappableKind(item.kind) && item.kind !== KINDS.text);
   const ref = useRef<HTMLDivElement>(null);
 
   /* the open menu closes on a tap anywhere else or on Escape */
@@ -250,7 +251,7 @@ function Tappable({
 
   /** hit areas for the icons on a top app bar and the destinations on a navigation bar */
   const slots: { key: IconSlotKey | "railToggle"; style: React.CSSProperties }[] = [];
-  if (onSlot && item.kind === "topAppBar") {
+  if (onSlot && item.kind === KINDS.topAppBar) {
     /* the icons sit below the status-bar inset only where the bar has one (see sizeOf) */
     const inset = sizeOf(item, {}).h - 64;
     if (item.icon) slots.push({ key: "icon", style: { left: 4, top: inset + 8, width: 48, height: 48, borderRadius: 24 } });
@@ -260,23 +261,23 @@ function Tappable({
     /* hit areas sit inside the scrolling layer, one per tab, so they move with the row */
     const n = item.tabs?.length ?? 0;
     for (let i = 0; i < n; i++) slots.push({ key: tabSlotKey(i), style: { left: i * SCROLL_TAB_W, width: SCROLL_TAB_W, top: 0, bottom: 0, borderRadius: 16 } });
-  } else if (onSlot && (item.kind === "bottomNav" || item.kind === "tabs")) {
+  } else if (onSlot && (item.kind === KINDS.bottomNav || item.kind === KINDS.tabs)) {
     const n = item.tabs?.length ?? 0;
     for (let i = 0; i < n; i++)
-      slots.push({ key: tabSlotKey(i), style: { left: `${(i / n) * 100}%`, width: `${100 / n}%`, top: 0, bottom: item.kind === "bottomNav" ? NAV_BAR_H : 0, borderRadius: 16 } });
+      slots.push({ key: tabSlotKey(i), style: { left: `${(i / n) * 100}%`, width: `${100 / n}%`, top: 0, bottom: item.kind === KINDS.bottomNav ? NAV_BAR_H : 0, borderRadius: 16 } });
   }
-  if (onSlot && item.kind === "navRail") {
+  if (onSlot && item.kind === KINDS.navRail) {
     const rail = railMetrics(item);
     if (onRailToggle) slots.push({ key: "railToggle", style: { left: rail.headerLeft, top: RAIL_TOP, width: 48, height: 48, borderRadius: 24 } });
     const n = item.tabs?.length ?? 0;
     for (let i = 0; i < n; i++)
       slots.push({ key: tabSlotKey(i), style: { left: rail.inset, width: rail.width - 2 * rail.inset, top: rail.top + i * (rail.itemHeight + rail.gap), height: rail.itemHeight, borderRadius: item.railExpanded ? 28 : 16 } });
   }
-  if (onSlot && item.kind === "toolbar") {
+  if (onSlot && item.kind === KINDS.toolbar) {
     const n = item.tabs?.length ?? 0;
     for (let i = 0; i < n; i++) slots.push({ key: tabSlotKey(i), style: { left: 8 + i * 52, width: 48, top: 8, height: 48, borderRadius: 24 } });
   }
-  if (onSlot && item.kind === "fabMenu") {
+  if (onSlot && item.kind === KINDS.fabMenu) {
     /* the pills hug their text on the right; the hit area covers the right part of the row */
     const n = item.tabs?.length ?? 0;
     for (let i = 0; i < n; i++) slots.push({ key: `tab:${i}`, style: { right: 0, width: "70%", top: i * 64, height: 56, borderRadius: 28 } });
@@ -642,9 +643,9 @@ function Screen({
                   : baseRadii(it);
             const act = it.action;
             let shown = flipped.has(it.id) ? flippedLook(it) : it;
-            if (it.kind === "slider" && values[it.id] !== undefined) shown = { ...shown, value: values[it.id] };
-            if (it.kind === "select" && values[it.id] !== undefined) shown = { ...shown, selected: values[it.id] };
-            const navKind = it.kind === "bottomNav" || it.kind === "navRail" || it.kind === "tabs";
+            if (it.kind === KINDS.slider && values[it.id] !== undefined) shown = { ...shown, value: values[it.id] };
+            if (it.kind === KINDS.select && values[it.id] !== undefined) shown = { ...shown, selected: values[it.id] };
+            const navKind = it.kind === KINDS.bottomNav || it.kind === KINDS.navRail || it.kind === KINDS.tabs;
             /* bars with the same destinations are one bar to the visitor: the choice follows them across screens */
             const navKey = navKind ? `nav:${it.kind}:${(it.tabs ?? []).map((t) => t.label).join("|")}` : "";
             if (navKind && values[navKey] !== undefined && values[navKey] >= 0) shown = { ...shown, selected: values[navKey] };
@@ -683,11 +684,11 @@ function Screen({
                       }
                     : undefined
                 }
-                onValue={it.kind === "slider" ? (v) => onValue(it.id, v) : undefined}
-                onPick={it.kind === "select" ? (i) => onValue(it.id, i) : undefined}
+                onValue={it.kind === KINDS.slider ? (v) => onValue(it.id, v) : undefined}
+                onPick={it.kind === KINDS.select ? (i) => onValue(it.id, i) : undefined}
                 menuOpen={menuId === it.id}
-                onMenu={it.kind === "select" ? (open) => setMenuId(open ? it.id : null) : undefined}
-                onRailToggle={it.kind === "navRail" && isWideRail(it) ? (animate) => changeRail(it.id, !it.railExpanded, animate) : undefined}
+                onMenu={it.kind === KINDS.select ? (open) => setMenuId(open ? it.id : null) : undefined}
+                onRailToggle={it.kind === KINDS.navRail && isWideRail(it) ? (animate) => changeRail(it.id, !it.railExpanded, animate) : undefined}
               />
             );
             if (!g.free) return node;
