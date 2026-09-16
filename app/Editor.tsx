@@ -112,7 +112,9 @@ import { BottomSheet, MobileActionBar, MobileInspector, MobileLang, MobileSettin
 import { ConfirmDialog, IconBtn, Segmented } from "@/components/ui";
 import { Lang, LangContext, SEED_TEXT, getLang, setGlobalLang, t, translateDefaultFrameName, translateDefaultText } from "@/lib/i18n";
 import {
+  AI_CAPABILITY_KIND,
   assertInspectorNever,
+  EXPORT_STATUS_KIND,
   selectInspectorSurface,
   type AiCapability,
   type ExportStatus,
@@ -2907,22 +2909,22 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   /* Inspector's public boundary is a read model plus typed commands. The selector
    * owns routing; the Inspector never receives the document or patch callbacks. */
   const itemAi: AiCapability = !aiReady
-    ? { kind: "unavailable", reason: aiReason ?? t("aiNoKey", lang) }
+    ? { kind: AI_CAPABILITY_KIND.unavailable, reason: aiReason ?? t("aiNoKey", lang) }
     : !selected || !tidyTarget
-      ? { kind: "unavailable", reason: aiReason ?? t("aiSelectScreen", lang) }
+      ? { kind: AI_CAPABILITY_KIND.unavailable, reason: aiReason ?? t("aiSelectScreen", lang) }
       : aiBusy && aiFrameId === tidyTarget.id
-        ? { kind: "running", cancel: cancelAi }
-        : { kind: "ready", run: () => runAi("behavior", tidyTarget, selected.id) };
+        ? { kind: AI_CAPABILITY_KIND.running, cancel: cancelAi }
+        : { kind: AI_CAPABILITY_KIND.ready, run: () => runAi("behavior", tidyTarget, selected.id) };
   const frameAi: AiCapability = !aiReady
-    ? { kind: "unavailable", reason: t("aiNoKey", lang) }
+    ? { kind: AI_CAPABILITY_KIND.unavailable, reason: t("aiNoKey", lang) }
     : selectedFrame && aiBusy && aiFrameId === selectedFrame.id
-      ? { kind: "running", cancel: cancelAi }
-      : { kind: "ready", run: () => selectedFrame && runAi("describe", selectedFrame) };
+      ? { kind: AI_CAPABILITY_KIND.running, cancel: cancelAi }
+      : { kind: AI_CAPABILITY_KIND.ready, run: () => selectedFrame && runAi("describe", selectedFrame) };
   const exportStatus: ExportStatus = selectedFrame && exportFrame?.id === selectedFrame.id
-    ? { kind: "running" }
+    ? { kind: EXPORT_STATUS_KIND.running }
     : selectedFrame && exportError?.frameId === selectedFrame.id
-      ? { kind: "error", message: exportError.message }
-      : { kind: "idle" };
+      ? { kind: EXPORT_STATUS_KIND.error, message: exportError.message }
+      : { kind: EXPORT_STATUS_KIND.idle };
   const inspectorSurface = selectInspectorSurface({
     selectedIds,
     selectedItem: selectedIds.length === 1 ? selected : null,

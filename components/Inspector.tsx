@@ -43,7 +43,7 @@ import { Icon } from "./M3Node";
 import { ButtonRun, CardLayoutPicker, CornerIcon, Field, IconBtn, Section, Segmented, SizePresets, Slider, TextTokenChips, TidyButton, Toggle, TokenChips } from "./ui";
 import { AiWriteBtn } from "./AiPanel";
 import { KIND_TEXT, SWIPE_TEXT, TRANSITION_TEXT, UIKey, t, useLang } from "@/lib/i18n";
-import { applyToggleLookCommand, assertInspectorNever } from "@/lib/inspector-contract";
+import { AI_CAPABILITY_KIND, applyToggleLookCommand, assertInspectorNever, EXPORT_STATUS_KIND, INSPECTOR_SURFACE_KIND, SELECTION_KIND } from "@/lib/inspector-contract";
 import { variantsOf, widthPresetLabel } from "@/lib/inspector-view";
 import type { ItemActions } from "@/lib/tokens";
 import type {
@@ -333,9 +333,9 @@ function ActionEditor({
 /** a multiline field with the AI button under it, fused with a button that swaps the AI text and the original once the AI has written it */
 function AiField({ ai, history, onRestore, p, value, onChange, placeholder }: { ai: AiCapability; history?: readonly string[]; onRestore: () => void; p: Palette; value: string; onChange: (v: string) => void; placeholder: string }) {
   const lang = useLang();
-  const ready = ai.kind === "ready";
-  const busy = ai.kind === "running";
-  const reason = ai.kind === "unavailable" ? ai.reason : undefined;
+  const ready = ai.kind === AI_CAPABILITY_KIND.ready;
+  const busy = ai.kind === AI_CAPABILITY_KIND.running;
+  const reason = ai.kind === AI_CAPABILITY_KIND.unavailable ? ai.reason : undefined;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <Field value={value} onChange={onChange} placeholder={placeholder} p={p} multiline rows={3} />
@@ -426,7 +426,7 @@ function FrameNavigationSection({ model, p, dispatch }: { model: FrameInspectorM
 
 function FrameExportSection({ model, p, dispatch }: { model: FrameInspectorModel; p: Palette; dispatch: (command: FrameCommand) => void }) {
   const lang = useLang();
-  const saving = model.export.image.kind === "running";
+  const saving = model.export.image.kind === EXPORT_STATUS_KIND.running;
   const actionButton = (icon: string, label: string, onClick: () => void, busy = false) => (
     <button onClick={onClick} disabled={busy} className="m3-press" style={{ flex: 1, height: 44, borderRadius: 22, border: "none", background: p.secondaryContainer, color: p.onSecondaryContainer, fontSize: 13, fontWeight: 600, cursor: busy ? "default" : "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, opacity: busy ? 0.6 : 1 }}>
       <Icon name={icon} size={20} />
@@ -439,7 +439,7 @@ function FrameExportSection({ model, p, dispatch }: { model: FrameInspectorModel
         {actionButton("content_copy", t("prompt", lang), () => dispatch({ kind: "copy-prompt", prompt: model.export.prompt }))}
         {actionButton("image", saving ? t("saving", lang) : t("saveImage", lang), () => dispatch({ kind: "export-image" }), saving)}
       </ButtonRun>
-      {model.export.image.kind === "error" && <div role="status" style={{ marginTop: 8, fontSize: 12, color: p.error }}>{model.export.image.message}</div>}
+      {model.export.image.kind === EXPORT_STATUS_KIND.error && <div role="status" style={{ marginTop: 8, fontSize: 12, color: p.error }}>{model.export.image.message}</div>}
       <div className="no-scrollbar" style={{ marginTop: 10, maxHeight: 260, overflowY: "auto", borderRadius: 16, background: p.surfaceContainerLow, padding: 12, fontSize: 12, lineHeight: 1.7, color: p.onSurfaceVariant, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
         {model.export.prompt}
       </div>
@@ -1115,7 +1115,7 @@ function SelectionInspector({ model, palette: p, dispatch }: { model: SelectionI
       {label}
     </button>
   );
-  const grouped = model.kind === "group";
+  const grouped = model.kind === SELECTION_KIND.group;
   return (
     <div className="no-scrollbar" style={{ padding: "12px 12px 20px", overflowY: "auto", height: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, padding: "6px 6px 6px 14px", borderRadius: 20, background: p.secondaryContainer, color: p.onSecondaryContainer }}>
@@ -1133,13 +1133,13 @@ function SelectionInspector({ model, palette: p, dispatch }: { model: SelectionI
 
 export function InspectorHost({ surface, palette: p, dispatch }: { surface: InspectorSurface; palette: Palette; dispatch: InspectorDispatch }) {
   switch (surface.kind) {
-    case "empty":
+    case INSPECTOR_SURFACE_KIND.empty:
       return <EmptyInspector p={p} />;
-    case "selection":
+    case INSPECTOR_SURFACE_KIND.selection:
       return <SelectionInspector model={surface.model} palette={p} dispatch={(command) => dispatch({ target: "selection", ids: surface.model.ids, command })} />;
-    case "item":
+    case INSPECTOR_SURFACE_KIND.item:
       return <ItemInspector model={surface.model} palette={p} dispatch={(command) => dispatch({ target: "item", id: surface.model.id, command })} />;
-    case "frame":
+    case INSPECTOR_SURFACE_KIND.frame:
       return <FrameInspector model={surface.model} palette={p} dispatch={(command) => dispatch({ target: "frame", id: surface.model.id, command })} />;
     default:
       return assertInspectorNever(surface, "Unhandled inspector surface");

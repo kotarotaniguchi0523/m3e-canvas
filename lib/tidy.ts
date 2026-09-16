@@ -224,18 +224,18 @@ export function carryFrame(groups: Group[], frame: Frame, to: Frame, frames: Fra
   const expanded = isExpanded(after.w);
   const mine = groups.filter((g) => owner.get(g.id) === frame.id);
   const standsAlone = (g: Group, kind: Kind) => g.items.length === 1 && g.items[0].kind === kind;
-  const navGroup = mine.find((g) => standsAlone(g, "bottomNav") || standsAlone(g, "navRail"));
+  const navGroup = mine.find((g) => standsAlone(g, KINDS.bottomNav) || standsAlone(g, KINDS.navRail));
   const swapNav = (g: Group, it: Item): Item => {
     if (g !== navGroup) return it;
-    if (expanded && it.kind === KINDS.bottomNav) return { ...it, kind: "navRail", railExpanded: false, size: undefined, size2: after.h, radiusTop: it.radiusBottom, radiusBottom: it.radiusTop };
+    if (expanded && it.kind === KINDS.bottomNav) return { ...it, kind: KINDS.navRail, railExpanded: false, size: undefined, size2: after.h, radiusTop: it.radiusBottom, radiusBottom: it.radiusTop };
     if (!expanded && it.kind === KINDS.navRail) {
       const { railExpanded: _expanded, railModal: _modal, [railExpansionSide]: _side, ...bar } = it;
-      return { ...bar, kind: "bottomNav", size: after.w, size2: undefined, radiusTop: it.radiusBottom, radiusBottom: it.radiusTop };
+      return { ...bar, kind: KINDS.bottomNav, size: after.w, size2: undefined, radiusTop: it.radiusBottom, radiusBottom: it.radiusTop };
     }
     return it;
   };
   /* a rail keeps the side it stood on; one that grows out of a bar starts on the left */
-  const side = navGroup && standsAlone(navGroup, "navRail") ? railSide(navGroup, frame, widths) : "left";
+  const side = navGroup && standsAlone(navGroup, KINDS.navRail) ? railSide(navGroup, frame, widths) : "left";
   const railSlots = (swap: boolean) => mine.reduce((slot, g) => {
     if (g.items.length !== 1) return slot;
     const item = swap ? swapNav(g, g.items[0]) : g.items[0];

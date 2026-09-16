@@ -31,25 +31,56 @@ import {
 } from "./tokens";
 import { KINDS } from "./kind";
 
+export const INSPECTOR_SURFACE_KIND = {
+  empty: "empty",
+  selection: "selection",
+  item: "item",
+  frame: "frame",
+} as const;
+export type InspectorSurfaceKind = (typeof INSPECTOR_SURFACE_KIND)[keyof typeof INSPECTOR_SURFACE_KIND];
+
+export const SELECTION_KIND = {
+  many: "many",
+  group: "group",
+} as const;
+export type SelectionKind = (typeof SELECTION_KIND)[keyof typeof SELECTION_KIND];
+
+export const FRAME_CONTEXT_KIND = {
+  phone: "phone",
+  desktop: "desktop",
+} as const;
+
+export const EXPORT_STATUS_KIND = {
+  idle: "idle",
+  running: "running",
+  error: "error",
+} as const;
+
+export const AI_CAPABILITY_KIND = {
+  unavailable: "unavailable",
+  ready: "ready",
+  running: "running",
+} as const;
+
 /**
  * The Inspector route is a view concern, not a second copy of editor state.
  * It is calculated from the current selection and document read model.
  */
 export type InspectorSurface =
-  | { kind: "empty"; reason: "no-selection" }
-  | { kind: "selection"; model: SelectionInspectorModel }
-  | { kind: "item"; model: ItemInspectorModel }
-  | { kind: "frame"; model: FrameInspectorModel };
+  | { kind: typeof INSPECTOR_SURFACE_KIND.empty; reason: "no-selection" }
+  | { kind: typeof INSPECTOR_SURFACE_KIND.selection; model: SelectionInspectorModel }
+  | { kind: typeof INSPECTOR_SURFACE_KIND.item; model: ItemInspectorModel }
+  | { kind: typeof INSPECTOR_SURFACE_KIND.frame; model: FrameInspectorModel };
 
 export type SelectionInspectorModel =
   | {
-      kind: "many";
+      kind: typeof SELECTION_KIND.many;
       ids: readonly string[];
       count: number;
       groupAction: "group";
     }
   | {
-      kind: "group";
+      kind: typeof SELECTION_KIND.group;
       ids: readonly string[];
       count: number;
       groupAction: "ungroup";
@@ -60,7 +91,7 @@ export type ItemFrameContext = {
   id: string;
   width: number;
   height: number;
-  kind: "phone" | "desktop";
+  kind: (typeof FRAME_CONTEXT_KIND)[keyof typeof FRAME_CONTEXT_KIND];
 };
 
 export type ItemInspectorModel = {
@@ -203,14 +234,14 @@ export type FrameInspectorModel = {
 export type TidyStatus = "tidy" | "undo" | "done";
 
 export type ExportStatus =
-  | { kind: "idle" }
-  | { kind: "running" }
-  | { kind: "error"; message: string };
+  | { kind: typeof EXPORT_STATUS_KIND.idle }
+  | { kind: typeof EXPORT_STATUS_KIND.running }
+  | { kind: typeof EXPORT_STATUS_KIND.error; message: string };
 
 export type AiCapability =
-  | { kind: "unavailable"; reason: string }
-  | { kind: "ready"; run(): void }
-  | { kind: "running"; cancel(): void };
+  | { kind: typeof AI_CAPABILITY_KIND.unavailable; reason: string }
+  | { kind: typeof AI_CAPABILITY_KIND.ready; run(): void }
+  | { kind: typeof AI_CAPABILITY_KIND.running; cancel(): void };
 
 /** `null` represents the item's single default action; named actions use an icon slot key. */
 export type InspectorNavigationSlotKey = IconSlotKey;
@@ -350,7 +381,7 @@ export function selectInspectorSurface(input: SelectInspectorSurfaceInput): Insp
 
   if (selectedFrame) {
     return {
-      kind: "frame",
+      kind: INSPECTOR_SURFACE_KIND.frame,
       model: {
         id: selectedFrame.id,
         header: {
@@ -382,17 +413,17 @@ export function selectInspectorSurface(input: SelectInspectorSurfaceInput): Insp
 
   if (selectedIds.length > 1) {
     return {
-      kind: "selection",
+      kind: INSPECTOR_SURFACE_KIND.selection,
       model: selectedGroup
         ? {
-            kind: "group",
+            kind: SELECTION_KIND.group,
             ids: selectedIds,
             count: selectedIds.length,
             groupAction: "ungroup",
             groupId: selectedGroup.id,
           }
         : {
-            kind: "many",
+            kind: SELECTION_KIND.many,
             ids: selectedIds,
             count: selectedIds.length,
             groupAction: "group",
@@ -401,7 +432,7 @@ export function selectInspectorSurface(input: SelectInspectorSurfaceInput): Insp
   }
 
   if (!selectedItem) {
-    return { kind: "empty", reason: "no-selection" };
+    return { kind: INSPECTOR_SURFACE_KIND.empty, reason: "no-selection" };
   }
 
   const standaloneRail =
@@ -428,13 +459,13 @@ export function selectInspectorSurface(input: SelectInspectorSurfaceInput): Insp
           id: selectedPartFrame.id,
           width: w,
           height: h,
-          kind: isPhoneFrame(selectedPartFrame) ? ("phone" as const) : ("desktop" as const),
+          kind: isPhoneFrame(selectedPartFrame) ? FRAME_CONTEXT_KIND.phone : FRAME_CONTEXT_KIND.desktop,
         };
       })()
     : null;
 
   return {
-    kind: "item",
+    kind: INSPECTOR_SURFACE_KIND.item,
     model: {
       id: selectedItem.id,
       kind: selectedItem.kind,
