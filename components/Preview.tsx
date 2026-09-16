@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Item } from "@/lib/tokens";
+import type { IconSlotKey, Item } from "@/lib/tokens";
 import { AnimatePresence, animate, motion, useMotionValue, useTransform, useReducedMotion, useIsPresent } from "motion/react";
 import type { TargetAndTransition, Variants } from "motion/react";
 import {
   Action,
+  COMPONENT_KIND,
   BACK_TARGET,
   BEZEL,
   Doc,
@@ -21,7 +22,7 @@ import {
   STATUS_BAR_H,
   SWIPE_DIRS,
   SwipeDir,
-  TAPPABLE,
+  isTappableKind,
   Transition,
   baseRadii,
   connectSpecOf,
@@ -31,6 +32,7 @@ import {
   frameSizeOf,
   groupsInFrame,
   isPhoneFrame,
+  isIconSlotKey,
   normalizeTheme,
   toggleIcon,
   uniformRadii,
@@ -39,6 +41,7 @@ import {
   railMetrics,
   sizeOf,
   isScrollableTabs,
+  tabSlotKey,
   tabScrollOffset,
   SCROLL_TAB_W,
 } from "@/lib/tokens";
@@ -122,12 +125,14 @@ const screenVariants: Variants = {
 };
 
 /** kinds whose on/off state flips when tapped in the preview */
-const TOGGLES = ["switch", "checkbox", "chip"] as const;
-const flips = (it: Item) => (TOGGLES as readonly string[]).includes(it.kind) || !!it.toggle;
+const TOGGLES = [COMPONENT_KIND.switch, COMPONENT_KIND.checkbox, COMPONENT_KIND.chip] as const;
+type PreviewToggleKind = (typeof TOGGLES)[number];
+const isPreviewToggleKind = (kind: Item["kind"]): kind is PreviewToggleKind => (TOGGLES as readonly Item["kind"][]).includes(kind);
+const flips = (it: Item) => isPreviewToggleKind(it.kind) || !!it.toggle;
 
 /** the look of a part after the visitor tapped it */
 function flippedLook(it: Item): Item {
-  if ((TOGGLES as readonly string[]).includes(it.kind)) return { ...it, checked: !it.checked };
+  if (isPreviewToggleKind(it.kind)) return { ...it, checked: !it.checked };
   if (it.toggle) {
     return {
       ...it,
@@ -161,7 +166,7 @@ function Tappable({
   widths: Record<string, number>;
   onTap?: () => void;
   /** per-slot targets on bars */
-  onSlot?: (slot: string, animate?: boolean) => void;
+  onSlot?: (slot: IconSlotKey, animate?: boolean) => void;
   /** live value for sliders */
   onValue?: (v: number) => void;
   /** an option chosen from a dropdown's menu */
@@ -218,7 +223,7 @@ function Tappable({
     window.addEventListener("pointerup", end);
     window.addEventListener("pointercancel", end);
   };
-  const live = !!onTap || !!onPick || (TAPPABLE.includes(item.kind) && item.kind !== "text");
+  const live = !!onTap || !!onPick || (isTappableKind(item.kind) && item.kind !== COMPONENT_KIND.text);
   const ref = useRef<HTMLDivElement>(null);
 
   /* the open menu closes on a tap anywhere else or on Escape */
@@ -245,8 +250,8 @@ function Tappable({
   };
 
   /** hit areas for the icons on a top app bar and the destinations on a navigation bar */
-  const slots: { key: string; style: React.CSSProperties }[] = [];
-  if (onSlot && item.kind === "topAppBar") {
+  const slots: { key: IconSlotKey | "railToggle"; style: React.CSSProperties }[] = [];
+  if (onSlot && item.kind === COMPONENT_KIND.topAppBar) {
     /* the icons sit below the status-bar inset only where the bar has one (see sizeOf) */
     const inset = sizeOf(item, {}).h - 64;
     if (item.icon) slots.push({ key: "icon", style: { left: 4, top: inset + 8, width: 48, height: 48, borderRadius: 24 } });
@@ -255,24 +260,24 @@ function Tappable({
   if (onSlot && scrollTabs) {
     /* hit areas sit inside the scrolling layer, one per tab, so they move with the row */
     const n = item.tabs?.length ?? 0;
-    for (let i = 0; i < n; i++) slots.push({ key: `tab:${i}`, style: { left: i * SCROLL_TAB_W, width: SCROLL_TAB_W, top: 0, bottom: 0, borderRadius: 16 } });
-  } else if (onSlot && (item.kind === "bottomNav" || item.kind === "tabs")) {
+    for (let i = 0; i < n; i++) slots.push({ key: tabSlotKey(i), style: { left: i * SCROLL_TAB_W, width: SCROLL_TAB_W, top: 0, bottom: 0, borderRadius: 16 } });
+  } else if (onSlot && (item.kind === COMPONENT_KIND.bottomNav || item.kind === COMPONENT_KIND.tabs)) {
     const n = item.tabs?.length ?? 0;
     for (let i = 0; i < n; i++)
-      slots.push({ key: `tab:${i}`, style: { left: `${(i / n) * 100}%`, width: `${100 / n}%`, top: 0, bottom: item.kind === "bottomNav" ? NAV_BAR_H : 0, borderRadius: 16 } });
+      slots.push({ key: tabSlotKey(i), style: { left: `${(i / n) * 100}%`, width: `${100 / n}%`, top: 0, bottom: item.kind === COMPONENT_KIND.bottomNav ? NAV_BAR_H : 0, borderRadius: 16 } });
   }
-  if (onSlot && item.kind === "navRail") {
+  if (onSlot && item.kind === COMPONENT_KIND.navRail) {
     const rail = railMetrics(item);
     if (onRailToggle) slots.push({ key: "railToggle", style: { left: rail.headerLeft, top: RAIL_TOP, width: 48, height: 48, borderRadius: 24 } });
     const n = item.tabs?.length ?? 0;
     for (let i = 0; i < n; i++)
-      slots.push({ key: `tab:${i}`, style: { left: rail.inset, width: rail.width - 2 * rail.inset, top: rail.top + i * (rail.itemHeight + rail.gap), height: rail.itemHeight, borderRadius: item.railExpanded ? 28 : 16 } });
+      slots.push({ key: tabSlotKey(i), style: { left: rail.inset, width: rail.width - 2 * rail.inset, top: rail.top + i * (rail.itemHeight + rail.gap), height: rail.itemHeight, borderRadius: item.railExpanded ? 28 : 16 } });
   }
-  if (onSlot && item.kind === "toolbar") {
+  if (onSlot && item.kind === COMPONENT_KIND.toolbar) {
     const n = item.tabs?.length ?? 0;
-    for (let i = 0; i < n; i++) slots.push({ key: `tab:${i}`, style: { left: 8 + i * 52, width: 48, top: 8, height: 48, borderRadius: 24 } });
+    for (let i = 0; i < n; i++) slots.push({ key: tabSlotKey(i), style: { left: 8 + i * 52, width: 48, top: 8, height: 48, borderRadius: 24 } });
   }
-  if (onSlot && item.kind === "fabMenu") {
+  if (onSlot && item.kind === COMPONENT_KIND.fabMenu) {
     /* the pills hug their text on the right; the hit area covers the right part of the row */
     const n = item.tabs?.length ?? 0;
     for (let i = 0; i < n; i++) slots.push({ key: `tab:${i}`, style: { right: 0, width: "70%", top: i * 64, height: 56, borderRadius: 28 } });
@@ -426,6 +431,11 @@ function Tappable({
 
 const ellipsisText: React.CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 
+type RailMotionState = ReturnType<typeof railMotionTargets> & {
+  animate: boolean;
+  source: { groups: Group[]; frame: Frame; widths: Record<string, number> };
+};
+
 function Screen({
   active = true,
   frame,
@@ -453,7 +463,7 @@ function Screen({
   /* the dropdown whose menu is open, if any; its group is lifted above the rest */
   const [menuId, setMenuId] = useState<string | null>(null);
   const [railStates, setRailStates] = useState<Record<string, boolean>>({});
-  const [railMotion, setRailMotion] = useState<(ReturnType<typeof railMotionTargets> & { animate: boolean }) | null>(null);
+  const [railMotion, setRailMotion] = useState<RailMotionState | null>(null);
   const lang = useLang();
   const reducedMotion = useReducedMotion();
   const isPresent = useIsPresent();
@@ -467,15 +477,20 @@ function Screen({
   const modalIds = new Set(shownGroups.flatMap((g) => { const rail = modalRailOf(g); return rail ? [rail.id] : []; }));
   const hasModal = modalIds.size > 0;
   const modalActive = interactive && hasModal;
+  const motionFor = (before: Group[], after: Group[], id: string, shouldAnimate: boolean): RailMotionState => ({
+    ...railMotionTargets(before, after, widths, id),
+    animate: shouldAnimate && !reducedMotion,
+    source: { groups, frame, widths },
+  });
   const changeRail = (id: string, railExpanded: boolean, animate: boolean) => {
     const next = updateRail(shownGroups, [frame], widths, id, { railExpanded });
-    setRailMotion({ ...railMotionTargets(shownGroups, next, widths, id), animate: animate && !reducedMotion });
+    setRailMotion(motionFor(shownGroups, next, id, animate));
     setRailStates((prev) => ({ ...prev, [id]: railExpanded }));
   };
   const closeRails = (animate = false) => {
     if (!hasModal) return;
     const next = [...modalIds].reduce((current, id) => updateRail(current, [frame], widths, id, { railExpanded: false }), shownGroups);
-    setRailMotion({ ...railMotionTargets(shownGroups, next, widths, [...modalIds][0]), animate: animate && !reducedMotion });
+    setRailMotion(motionFor(shownGroups, next, [...modalIds][0], animate));
     setRailStates((prev) => ({ ...prev, ...Object.fromEntries([...modalIds].map((id) => [id, false])) }));
   };
   useEffect(() => {
@@ -495,7 +510,9 @@ function Screen({
     const timer = window.setTimeout(() => setRailMotion(null), 260);
     return () => window.clearTimeout(timer);
   }, [railMotion]);
-  useEffect(() => { setRailMotion(null); }, [groups, frame, widths]);
+  /* A document update invalidates a transient motion immediately. This is derived from the
+   * source identity, so the animation state never needs an effect that mirrors props. */
+  const activeRailMotion = railMotion?.source.groups === groups && railMotion.source.frame === frame && railMotion.source.widths === widths ? railMotion : null;
   /* The editor behind the preview is inert while it is up, so focus has nowhere else to
    * go: a screen that becomes the one on show takes it when nothing inside the preview
    * holds it, and a modal screen giving way to a plain one leaves the keyboard on the new
@@ -557,7 +574,7 @@ function Screen({
       ref={screenRef}
       inert={!interactive}
       aria-hidden={!interactive || undefined}
-      data-rail-motion={railMotion?.animate ? "true" : undefined}
+      data-rail-motion={activeRailMotion?.animate ? "true" : undefined}
       role={modalActive ? "dialog" : "group"}
       aria-modal={modalActive ? true : undefined}
       aria-label={modalActive ? t("railState", lang) : frame.name || t("screen", lang)}
@@ -584,7 +601,7 @@ function Screen({
           key={g.id}
           className="m3-preview-group"
           data-preview-group={g.id}
-          data-rail-animate={railMotion?.groups.has(g.id) ? "group" : undefined}
+          data-rail-animate={activeRailMotion?.groups.has(g.id) ? "group" : undefined}
           data-rail-modal={g.items.some((it) => modalIds.has(it.id)) ? "true" : undefined}
           inert={hasModal && !g.items.some((it) => modalIds.has(it.id))}
           style={
@@ -626,9 +643,9 @@ function Screen({
                   : baseRadii(it);
             const act = it.action;
             let shown = flipped.has(it.id) ? flippedLook(it) : it;
-            if (it.kind === "slider" && values[it.id] !== undefined) shown = { ...shown, value: values[it.id] };
-            if (it.kind === "select" && values[it.id] !== undefined) shown = { ...shown, selected: values[it.id] };
-            const navKind = it.kind === "bottomNav" || it.kind === "navRail" || it.kind === "tabs";
+            if (it.kind === COMPONENT_KIND.slider && values[it.id] !== undefined) shown = { ...shown, value: values[it.id] };
+            if (it.kind === COMPONENT_KIND.select && values[it.id] !== undefined) shown = { ...shown, selected: values[it.id] };
+            const navKind = it.kind === COMPONENT_KIND.bottomNav || it.kind === COMPONENT_KIND.navRail || it.kind === COMPONENT_KIND.tabs;
             /* bars with the same destinations are one bar to the visitor: the choice follows them across screens */
             const navKey = navKind ? `nav:${it.kind}:${(it.tabs ?? []).map((t) => t.label).join("|")}` : "";
             if (navKind && values[navKey] !== undefined && values[navKey] >= 0) shown = { ...shown, selected: values[navKey] };
@@ -649,7 +666,7 @@ function Screen({
                 p={p}
                 radii={radii}
                 widths={widths}
-                railAnimating={railMotion?.items.has(it.id)}
+                railAnimating={activeRailMotion?.items.has(it.id)}
                 onTap={tap}
                 onSlot={
                   slotActions || navKind
@@ -657,7 +674,7 @@ function Screen({
                         /* a tapped destination lights up where it opens nothing; where it opens a
                            screen, that screen's bar shows the destination its author chose, or the
                            tapped one when the author chose none */
-                        const a = slotActions?.[slot];
+                        const a = isIconSlotKey(slot) ? slotActions?.[slot] : undefined;
                         if (navKind && slot.startsWith("tab:")) {
                           onValue(navKey, a ? -1 : Number(slot.slice(4)));
                           if (a) onValue(`${navKey}:opened:${a.to}`, Number(slot.slice(4)));
@@ -667,11 +684,11 @@ function Screen({
                       }
                     : undefined
                 }
-                onValue={it.kind === "slider" ? (v) => onValue(it.id, v) : undefined}
-                onPick={it.kind === "select" ? (i) => onValue(it.id, i) : undefined}
+                onValue={it.kind === COMPONENT_KIND.slider ? (v) => onValue(it.id, v) : undefined}
+                onPick={it.kind === COMPONENT_KIND.select ? (i) => onValue(it.id, i) : undefined}
                 menuOpen={menuId === it.id}
-                onMenu={it.kind === "select" ? (open) => setMenuId(open ? it.id : null) : undefined}
-                onRailToggle={it.kind === "navRail" && isWideRail(it) ? (animate) => changeRail(it.id, !it.railExpanded, animate) : undefined}
+                onMenu={it.kind === COMPONENT_KIND.select ? (open) => setMenuId(open ? it.id : null) : undefined}
+                onRailToggle={it.kind === COMPONENT_KIND.navRail && isWideRail(it) ? (animate) => changeRail(it.id, !it.railExpanded, animate) : undefined}
               />
             );
             if (!g.free) return node;
@@ -755,16 +772,15 @@ export function Preview({
     const runs = [animate(shellW, outerW, opts), animate(shellH, outerH, opts), animate(screenRadius, radius, opts)];
     return () => runs.forEach((r) => r.stop());
   }, [outerW, outerH, radius, shellW, shellH, screenRadius]);
-  useEffect(
-    () =>
-      prog.on("change", (v) => {
-        if (!peekRef.current) return;
-        shellW.set(outerW + (targetOuterW - outerW) * v);
-        shellH.set(outerH + (targetOuterH - outerH) * v);
-        screenRadius.set(radius + (targetRadius - radius) * v);
-      }),
-    [prog, outerW, outerH, radius, targetOuterW, targetOuterH, targetRadius, shellW, shellH, screenRadius],
-  );
+  useEffect(() => {
+    const unsubscribe = prog.on("change", (v) => {
+      if (!peekRef.current) return;
+      shellW.set(outerW + (targetOuterW - outerW) * v);
+      shellH.set(outerH + (targetOuterH - outerH) * v);
+      screenRadius.set(radius + (targetRadius - radius) * v);
+    });
+    return () => unsubscribe();
+  }, [prog, outerW, outerH, radius, targetOuterW, targetOuterH, targetRadius, shellW, shellH, screenRadius]);
   const screenW = useTransform(shellW, (v) => v - BEZEL * 2);
   const screenH = useTransform(shellH, (v) => v - BEZEL * 2);
   const shellRadius = useTransform(screenRadius, (v) => v + BEZEL);
@@ -955,7 +971,7 @@ export function Preview({
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
     };
-  }, [frames, scale, prog, axisMV, enterMV, exitMV]);
+  }, [frames, scale, spring, prog, axisMV, enterMV, exitMV]);
 
   const pickerRef = useRef<HTMLDivElement>(null);
   const pickerButton = useRef<HTMLButtonElement>(null);

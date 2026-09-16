@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { tidyFrame } from "./tidy";
-import { Frame, Group, Item, Kind, NAV_BAR_H, PHONE_H, PHONE_MARGIN, PHONE_W, groupBounds, makeItem } from "./tokens";
+import { Frame, Group, Item, ComponentKind, NAV_BAR_H, PHONE_H, PHONE_MARGIN, PHONE_W, groupBounds, makeItem } from "./tokens";
 
 const frame: Frame = { id: "f1", name: "Home", x: 0, y: 0 };
 const frames = [frame];
 
 const grp = (id: string, x: number, y: number, items: Item[]): Group => ({ id, x, y, axis: "x", items });
-const part = (kind: Kind, id: string): Item => ({ ...makeItem(kind), id });
+const part = (kind: ComponentKind, id: string): Item => ({ ...makeItem(kind), id });
 
 describe("tidyFrame", () => {
   it("snaps the app bar to the top edge and the navigation bar to the bottom", () => {

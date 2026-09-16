@@ -47,6 +47,10 @@ describe("isProject", () => {
     expect(isProject(withItem({ kind }))).toBe(true);
   });
 
+  it.each([null, undefined, "not-a-component", 1, {}, []])("rejects an invalid component kind %j", (kind) => {
+    expect(isProject(withItem({ kind }))).toBe(false);
+  });
+
   it.each(VARIANTS)("accepts registered variant $key", ({ key }) => {
     expect(isProject(withItem({ variant: key }))).toBe(true);
   });

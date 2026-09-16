@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext } from "react";
+import type { ComponentKind } from "./tokens";
 
 export type Lang = "ja" | "en" | "zh" | "ko";
 export const LANGS: { key: Lang; label: string }[] = [
@@ -29,8 +30,12 @@ export const SEED_TEXT: Record<Lang, { favorite: string; share: string; inbox: s
   ko: { favorite: "즐겨찾기", share: "공유", inbox: "받은편지함", starred: "별표 표시", archive: "보관함", supporting: "보조 텍스트", start: "시작하기" },
 };
 
-/** ponytail: matches defaults by text; add provenance if authored copies must be distinguished. */
-export function translateDefaultText(value: string, kind: string, field: "label" | "supporting" | "tab", lang: Lang): string {
+/** ponytail: matches defaults by text; add provenance if authored copies must be distinguished.
+ * This module is imported by tokens.ts for its translated defaults, so these
+ * few component checks intentionally use literals instead of creating a
+ * runtime cycle back to COMPONENT_KIND. The parameter is still ComponentKind,
+ * so an unsupported value cannot enter this function through TypeScript. */
+export function translateDefaultText(value: string, kind: ComponentKind, field: "label" | "supporting" | "tab", lang: Lang): string {
   for (const { key: from } of LANGS) {
     if (field === "tab") {
       const labels = (l: Lang) => kind === "tabs" ? TAB_LABELS[l] : kind === "select" ? SELECT_OPTIONS[l] : (kind === "fabMenu" ? FAB_MENU_TABS[l] : NAV_TABS[l]).map((tab) => tab.label);
@@ -165,6 +170,7 @@ export const UI = {
   copied: { ja: "コピーしました", en: "Copied", zh: "已复制" },
   saveImage: { ja: "画像で保存", en: "Save as image", zh: "保存为图片" },
   saving: { ja: "保存中…", en: "Saving…", zh: "保存中…" },
+  exportError: { ja: "画像の保存に失敗しました", en: "Could not save the image", zh: "图像保存失败" },
   previewFrom: { ja: "この画面からプレビュー", en: "Preview from this screen", zh: "从此屏幕预览" },
   duplicate: { ja: "複製", en: "Duplicate", zh: "复制" },
   duplicateKey: { ja: "複製 (Ctrl+D)", en: "Duplicate (Ctrl+D)", zh: "复制 (Ctrl+D)" },
@@ -456,7 +462,7 @@ export const KO: Record<UIKey, string> = {
   invalidProject: "프로젝트 파일을 열 수 없습니다.", readOnlyTitle: "다른 탭에서 편집 중입니다",
   readOnlyBody: "이 캔버스는 다른 탭에서 편집 중입니다. 해당 탭을 닫은 다음 이 페이지를 새로고침하세요.",
   reload: "새로고침",
-  copied: "복사됨", saveImage: "이미지로 저장", saving: "저장 중…", previewFrom: "이 화면부터 미리보기",
+  copied: "복사됨", saveImage: "이미지로 저장", saving: "저장 중…", exportError: "이미지를 저장할 수 없습니다", previewFrom: "이 화면부터 미리보기",
   duplicate: "복제", duplicateKey: "복제 (Ctrl+D)", delete: "삭제 (Delete)", deleteSelection: "선택 항목 삭제",
   text: "텍스트", label: "레이블", bold: "굵게", action: "동작", supporting: "보조 텍스트", tabs: "항목", changeIcon: "아이콘 변경",
   options: "옵션", addOption: "옵션 추가", removeOption: "이 옵션 삭제", addTab: "탭 추가", removeTab: "이 탭 삭제", selectedOption: "초깃값으로 설정(다시 누르면 선택 해제)", image: "이미지", pickImage: "이미지 선택", removeImage: "이미지 제거", imageUrl: "이미지 URL", imageTop: "위쪽", imageLeading: "앞쪽", imageTrailing: "뒤쪽", cardLayout: "레이아웃", noImageLayout: "이미지 없음", textPosition: "텍스트 위치", textTop: "위", textMiddle: "가운데", textBottom: "아래", textColor: "텍스트 색상", autoColor: "자동", autoWidth: "글자 너비", icon: "아이콘", noIcon: "아이콘 없음", searchIcons: "아이콘 검색",
@@ -503,7 +509,7 @@ export const t = (key: UIKey, lang: Lang = current): string => (lang === "ko" ? 
 
 export const KIND_TEXT: Record<
   Lang,
-  Record<string, { noun: string; label?: string; supporting?: string }>
+  Record<ComponentKind, { noun: string; label?: string; supporting?: string }>
 > = {
   ja: {
     box: { noun: "ボックス" },

@@ -25,7 +25,9 @@ import {
   clamp,
   connectSpecOf,
   Doc,
+  defaultTabsFor,
   isPlatform,
+  isIconSlotKey,
   Platform,
   Frame,
   Place,
@@ -36,16 +38,19 @@ import {
   FrameMode,
   frameOfGroup,
   framePresetPatch,
+  framePresetOf,
   frameRadius,
   frameRect,
   frameSizeOf,
+  cardLayoutPatch,
   carryItemSize,
   defaultPlatformOf,
   GAP,
   Group,
   groupBounds,
   Item,
-  Kind,
+  COMPONENT_KIND,
+  ComponentKind,
   KIND_ORDER,
   KIND_SPEC,
   collapseFree,
@@ -58,7 +63,7 @@ import {
   uiFontFamily,
   normalizeTheme,
   setGlobalShape,
-  MEASURED,
+  isMeasured,
   NAV_BAR_H,
   Palette,
   paletteOf,
@@ -75,13 +80,15 @@ import {
   TRANSITIONS,
   uid,
   uniformRadii,
-  FULL_WIDTH,
+  isFullWidth,
   fitHeight,
   railExpansionSide,
+  setIconSlot,
+  tabCountPatch,
 } from "@/lib/tokens";
 import { Icon, M3Node, M3Static, MeasuredContent } from "@/components/M3Node";
 import { LayersPanel } from "@/components/Layers";
-import { FrameInspector, FrameSizePicker, Inspector } from "@/components/Inspector";
+import { FrameSizePicker, InspectorHost } from "@/components/Inspector";
 import { Preview } from "@/components/Preview";
 import { Logo } from "@/components/Logo";
 import { PartsPalette } from "@/components/PartsPalette";
@@ -104,6 +111,16 @@ import { ThemeContext, ensureFontLoaded, ensureLangFontLoaded } from "@/lib/them
 import { BottomSheet, MobileActionBar, MobileInspector, MobileLang, MobileSettings } from "@/components/Mobile";
 import { ConfirmDialog, IconBtn, Segmented } from "@/components/ui";
 import { Lang, LangContext, SEED_TEXT, getLang, setGlobalLang, t, translateDefaultFrameName, translateDefaultText } from "@/lib/i18n";
+import {
+  AI_CAPABILITY_KIND,
+  assertInspectorNever,
+  EXPORT_STATUS_KIND,
+  selectInspectorSurface,
+  type AiCapability,
+  type ExportStatus,
+  type InspectorCommand,
+  type InspectorDispatch,
+} from "@/lib/inspector-contract";
 
 /** the screens while a model drafts: primary, tertiary and primary container, drifting */
 const DRAFT_GRADIENT = (p: Palette) => `linear-gradient(120deg, ${p.primaryContainer}, ${p.tertiaryContainer}, ${p.primary}, ${p.secondaryContainer}, ${p.primaryContainer})`;
@@ -143,6 +160,15 @@ type Snap = { groupId: string; index: number; pull: number };
 type Guide = { x?: number; y?: number; gx?: number; gy?: number };
 const GUIDE_PX = 7;
 
+/** Pointer-gesture state belongs to the editor interaction boundary. It is not
+ * a component kind and must not be folded into the document model's union. */
+const GESTURE_KIND = {
+  pan: "pan",
+  marquee: "marquee",
+  frame: "frame",
+  group: "group",
+} as const;
+
 /** Material's 4dp grid: a coordinate rounded to it, measured from the screen's corner */
 const GRID = 4;
 const onGrid = (v: number, origin: number) => origin + Math.round((v - origin) / GRID) * GRID;
@@ -165,9 +191,9 @@ type DragState = {
 };
 
 type Gesture =
-  | { kind: "pan"; sx: number; sy: number; vx: number; vy: number }
+  | { kind: typeof GESTURE_KIND.pan; sx: number; sy: number; vx: number; vy: number }
   | {
-      kind: "marquee";
+      kind: typeof GESTURE_KIND.marquee;
       x0: number;
       y0: number;
       x1: number;
@@ -175,7 +201,7 @@ type Gesture =
       moved: boolean;
     }
   | {
-      kind: "frame";
+      kind: typeof GESTURE_KIND.frame;
       id: string;
       sx: number;
       sy: number;
@@ -184,7 +210,7 @@ type Gesture =
       groups: { id: string; x: number; y: number }[];
       moved: boolean;
     }
-  | { kind: "group"; id: string; sx: number; sy: number; gx: number; gy: number; moved: boolean; overBin: boolean; guide?: Guide | null };
+  | { kind: typeof GESTURE_KIND.group; id: string; sx: number; sy: number; gx: number; gy: number; moved: boolean; overBin: boolean; guide?: Guide | null };
 
 /** everything in a document apart from its screens and parts */
 type DocMeta = Omit<Doc, "groups" | "frames">;
@@ -216,7 +242,7 @@ const SEED_FRAMES: Frame[] = [{ id: "seedF1", name: "Home", x: 0, y: 0 }];
 function migrateGroups(groups: Group[], frames: Frame[]): Group[] {
   const oldNavH = KIND_SPEC.bottomNav.h - NAV_BAR_H;
   return groups.map((g) => {
-    if (g.items.length !== 1 || g.items[0].kind !== "bottomNav") return g;
+    if (g.items.length !== 1 || g.items[0].kind !== COMPONENT_KIND.bottomNav) return g;
     const f = frames.find((fr) => {
       const r = frameRect(fr);
       return g.x >= r.l - 1 && g.x <= r.r && g.y === r.b - oldNavH;
@@ -233,7 +259,7 @@ const seed = (lang: Lang = getLang()): Group[] => {
   const text = SEED_TEXT[lang];
   let n = 0;
   const sid = () => `seed${++n}`;
-  const mk = (k: Kind) => ({ ...makeItem(k), id: sid() });
+  const mk = (k: ComponentKind) => ({ ...makeItem(k), id: sid() });
   const bar = mk("topAppBar");
   const a = mk("button");
   const b = mk("button");
@@ -269,7 +295,7 @@ const seed = (lang: Lang = getLang()): Group[] => {
 /** The phone version starts with buttons only: that is all it edits. */
 const mobileSeed = (lang: Lang = getLang()): Group[] => {
   const text = SEED_TEXT[lang];
-  const mk = (k: Kind) => makeItem(k);
+  const mk = (k: ComponentKind) => makeItem(k);
   const a = mk("button");
   const b = mk("button");
   const c = mk("button");
@@ -375,6 +401,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   const [confirmClear, setConfirmClear] = useState(false);
   /** frame being rendered offscreen for the PNG export */
   const [exportFrame, setExportFrame] = useState<Frame | null>(null);
+  const [exportError, setExportError] = useState<{ frameId: string; message: string } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [brief, setBrief] = useState("");
@@ -420,7 +447,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   const [layersFrameId, setLayersFrameId] = useState<string | null>(null);
   const [rightW, setRightW] = useState(320);
   const [rightTab, setRightTab] = useState<"edit" | "prompt">("edit");
-  const [favorites, setFavorites] = useState<Kind[]>([]);
+  const [favorites, setFavorites] = useState<ComponentKind[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedFrameId, setSelectedFrameId] = useState<string | null>(null);
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
@@ -1121,7 +1148,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
 
   const startPan = (clientX: number, clientY: number) => {
     const g: Gesture = {
-      kind: "pan",
+      kind: GESTURE_KIND.pan,
       sx: clientX,
       sy: clientY,
       vx: viewRef.current.x,
@@ -1154,7 +1181,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
       setRightTab("edit");
       /* a locked group stays selectable, but dragging it does nothing */
       if (g.locked) return;
-      const gg: Gesture = { kind: "group", id: g.id, sx: e.clientX, sy: e.clientY, gx: g.x, gy: g.y, moved: false, overBin: false };
+      const gg: Gesture = { kind: GESTURE_KIND.group, id: g.id, sx: e.clientX, sy: e.clientY, gx: g.x, gy: g.y, moved: false, overBin: false };
       gestureRef.current = gg;
       setGesture(gg);
       return;
@@ -1193,7 +1220,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
     setDrag({ ...d });
   };
 
-  const onPartPointerDown = (e: React.PointerEvent, kind: Kind) => {
+  const onPartPointerDown = (e: React.PointerEvent, kind: ComponentKind) => {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
@@ -1383,7 +1410,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
        * default (a list or a field as wide as a desktop is rarely what the author means), but no
        * taller than the screen */
       const slot = targetFrame ? barSlotOf(groupsRef.current, targetFrame, framesRef.current, widthsRef.current) : null;
-      const isBar = FULL_WIDTH.includes(item.kind);
+      const isBar = isFullWidth(item.kind);
       const placedItem = targetFrame && slot ? (isBar ? carryItemSize(item, { w: PHONE_W, h: PHONE_H }, { w: slot.w, h: frameSizeOf(targetFrame).h }) : fitHeight(item, frameSizeOf(targetFrame).h)) : item;
       /* off any guide, the part settles on the 4dp grid of the screen it lands on */
       const origin = targetFrame ?? { x: 0, y: 0 };
@@ -1497,7 +1524,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
     if (e.button !== 0) return;
     const pt = toWorld(e.clientX, e.clientY);
     const g: Gesture = {
-      kind: "marquee",
+      kind: GESTURE_KIND.marquee,
       x0: pt.x,
       y0: pt.y,
       x1: pt.x,
@@ -1541,7 +1568,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
       )
       .map((g) => ({ id: g.id, x: g.x, y: g.y }));
     const g: Gesture = {
-      kind: "frame",
+      kind: GESTURE_KIND.frame,
       id: f.id,
       sx: e.clientX,
       sy: e.clientY,
@@ -1560,7 +1587,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
     const move = (e: PointerEvent) => {
       const g = gestureRef.current;
       if (!g) return;
-      if (g.kind === "pan") {
+      if (g.kind === GESTURE_KIND.pan) {
         setView((v) => ({
           ...v,
           x: g.vx + (e.clientX - g.sx),
@@ -1568,7 +1595,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
         }));
         return;
       }
-      if (g.kind === "group") {
+      if (g.kind === GESTURE_KIND.group) {
         const z = viewRef.current.z;
         const dx = (e.clientX - g.sx) / z;
         const dy = (e.clientY - g.sy) / z;
@@ -1601,7 +1628,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
         setGroups((gs) => gs.map((x) => (x.id === g.id ? placed : x)));
         return;
       }
-      if (g.kind === "frame") {
+      if (g.kind === GESTURE_KIND.frame) {
         const z = viewRef.current.z;
         const dx = (e.clientX - g.sx) / z;
         const dy = (e.clientY - g.sy) / z;
@@ -1654,7 +1681,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
       gestureRef.current = null;
       setGesture(null);
       // a group dragged onto the parts panel is deleted, like a single part
-      if (g?.kind === "group" && g.moved && inBin(e.clientX)) {
+      if (g?.kind === GESTURE_KIND.group && g.moved && inBin(e.clientX)) {
         setGroups((gs) => gs.filter((x) => x.id !== g.id));
         setSelectedIds([]);
       }
@@ -1819,7 +1846,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
     };
     /* a copied modal rail starts collapsed and standard: a screen shows one modal rail, and
        the copy sits inward of the edge the original remembered */
-    if (copy.kind === "navRail" && copy.railModal) {
+    if (copy.kind === COMPONENT_KIND.navRail && copy.railModal) {
       copy.railModal = false;
       copy.railExpanded = false;
       delete copy[railExpansionSide];
@@ -2533,7 +2560,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
               const next = { ...it };
               if (next.action?.to === id) next.action = undefined;
               if (next.actions) {
-                const actions = Object.fromEntries(Object.entries(next.actions).filter(([, a]) => a.to !== id));
+                const actions = Object.fromEntries(Object.entries(next.actions).filter(([, a]) => a?.to !== id));
                 next.actions = Object.keys(actions).length ? actions : undefined;
               }
               return next;
@@ -2588,18 +2615,21 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   /** The screen is re-rendered offscreen at 1:1 with static parts, so the
    *  canvas zoom, selection outlines and in-flight animations never leak into the PNG. */
   const saveFrameImage = async (f: Frame) => {
+    setExportError(null);
     setExportFrame(f);
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
     try {
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
       await document.fonts?.ready;
       const el = document.querySelector<HTMLElement>(`[data-export="${f.id}"]`);
-      if (!el) return;
+      if (!el) throw new Error("export-surface-not-found");
       const { w, h } = frameSizeOf(f);
       const url = await toPng(el, { pixelRatio: 2, cacheBust: true, width: w, height: h });
       const a = document.createElement("a");
       a.href = url;
       a.download = `${f.name || "screen"}.png`;
       a.click();
+    } catch {
+      setExportError({ frameId: f.id, message: t("exportError", lang) });
     } finally {
       setExportFrame(null);
     }
@@ -2629,7 +2659,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
                   item={pl.item}
                   palette={p}
                   radii={corners.get(pl.item.id)}
-                  style={MEASURED.includes(pl.item.kind) ? undefined : { width: pl.w, height: pl.h }}
+                  style={isMeasured(pl.item.kind) ? undefined : { width: pl.w, height: pl.h }}
                 />
               </div>
             )))(freeRadii(g, widths))
@@ -2662,7 +2692,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
                   item={it}
                   palette={p}
                   radii={radii}
-                  style={MEASURED.includes(it.kind) ? undefined : { width: sizeOf(it, widths).w, height: sizeOf(it, widths).h }}
+                  style={isMeasured(it.kind) ? undefined : { width: sizeOf(it, widths).w, height: sizeOf(it, widths).h }}
                 />
               );
             })}
@@ -2885,6 +2915,256 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   const docRef = useRef(doc);
   docRef.current = doc;
 
+  /* Inspector's public boundary is a read model plus typed commands. The selector
+   * owns routing; the Inspector never receives the document or patch callbacks. */
+  const itemAi: AiCapability = !aiReady
+    ? { kind: AI_CAPABILITY_KIND.unavailable, reason: aiReason ?? t("aiNoKey", lang) }
+    : !selected || !tidyTarget
+      ? { kind: AI_CAPABILITY_KIND.unavailable, reason: aiReason ?? t("aiSelectScreen", lang) }
+      : aiBusy && aiFrameId === tidyTarget.id
+        ? { kind: AI_CAPABILITY_KIND.running, cancel: cancelAi }
+        : { kind: AI_CAPABILITY_KIND.ready, run: () => runAi("behavior", tidyTarget, selected.id) };
+  const frameAi: AiCapability = !aiReady
+    ? { kind: AI_CAPABILITY_KIND.unavailable, reason: t("aiNoKey", lang) }
+    : selectedFrame && aiBusy && aiFrameId === selectedFrame.id
+      ? { kind: AI_CAPABILITY_KIND.running, cancel: cancelAi }
+      : { kind: AI_CAPABILITY_KIND.ready, run: () => selectedFrame && runAi("describe", selectedFrame) };
+  const exportStatus: ExportStatus = selectedFrame && exportFrame?.id === selectedFrame.id
+    ? { kind: EXPORT_STATUS_KIND.running }
+    : selectedFrame && exportError?.frameId === selectedFrame.id
+      ? { kind: EXPORT_STATUS_KIND.error, message: exportError.message }
+      : { kind: EXPORT_STATUS_KIND.idle };
+  const inspectorSurface = selectInspectorSurface({
+    selectedIds,
+    selectedItem: selectedIds.length === 1 ? selected : null,
+    selectedFrame,
+    selectedGroup,
+    selectedPartFrame,
+    groups,
+    frames,
+    frameMode: frame,
+    itemAi,
+    frameAi,
+    prompt: selectedFrame ? buildPrompt(doc, widths, selectedFrame.id, lang) : "",
+    exportStatus,
+    tidy: tidyState ?? "done",
+  });
+
+  const dispatchInspector: InspectorDispatch = useCallback(
+    (command: InspectorCommand) => {
+      switch (command.target) {
+        case "selection":
+          switch (command.command.kind) {
+            case "group":
+              groupSelected();
+              return;
+            case "ungroup":
+              ungroupSelected();
+              return;
+            case "align":
+              alignSelected(command.command.value);
+              return;
+            case "delete":
+              deleteSelected();
+              return;
+            case "duplicate":
+              duplicateSelected();
+              return;
+            default:
+              return assertInspectorNever(command.command, "Unhandled selection command");
+          }
+        case "item":
+          if (!selected || command.id !== selected.id) return;
+          switch (command.command.kind) {
+            case "align":
+              alignSelected(command.command.value);
+              return;
+            case "set-label":
+              patchSelected({ label: command.command.value });
+              return;
+            case "set-supporting":
+              patchSelected({ supporting: command.command.value });
+              return;
+            case "set-bold":
+              patchSelected({ bold: command.command.value });
+              return;
+            case "set-content-align":
+              patchSelected({ contentAlign: command.command.value });
+              return;
+            case "set-text-color":
+              patchSelected({ textColor: command.command.value });
+              return;
+            case "set-variant":
+              patchSelected({ variant: command.command.value });
+              return;
+            case "set-icon-slot":
+              patchSelected(setIconSlot(selected, command.command.slot, command.command.value));
+              return;
+            case "set-tabs":
+              patchSelected({ tabs: [...command.command.tabs], selected: command.command.selected, actions: command.command.actions ? { ...command.command.actions } : undefined });
+              return;
+            case "set-card-layout":
+              patchSelected(cardLayoutPatch(command.command.value));
+              return;
+            case "set-image-size":
+              patchSelected({ imageSize: command.command.value });
+              return;
+            case "set-image-source":
+              patchSelected({ src: command.command.value });
+              return;
+            case "set-fill":
+              patchSelected({ fill: command.command.value });
+              return;
+            case "set-icon-fill":
+              patchSelected({ iconFill: command.command.value });
+              return;
+            case "set-toggle":
+              patchSelected({ toggle: command.command.value });
+              return;
+            case "set-checked":
+              patchSelected({ checked: command.command.value });
+              return;
+            case "set-switch":
+              patchSelected({ switch: command.command.value ? true : undefined });
+              return;
+            case "set-no-check":
+              patchSelected({ noCheck: command.command.value ? true : undefined });
+              return;
+            case "set-contained":
+              patchSelected({ contained: command.command.value });
+              return;
+            case "set-wavy":
+              patchSelected({ wavy: command.command.value });
+              return;
+            case "set-value":
+              patchSelected({ value: command.command.value });
+              return;
+            case "set-rail":
+              patchSelected({ railExpanded: command.command.expanded, railModal: command.command.modal });
+              return;
+            case "set-track-thickness":
+              patchSelected({ trackThickness: command.command.value });
+              return;
+            case "set-size":
+              patchSelected({ size: command.command.value });
+              return;
+            case "set-size2":
+              patchSelected({ size2: command.command.value });
+              return;
+            case "set-radius":
+              patchSelected(command.command.side === "top" ? { radiusTop: command.command.value } : { radiusBottom: command.command.value });
+              return;
+            case "set-corners":
+              patchSelected({ corners: command.command.value, radiusTop: command.command.radiusTop, radiusBottom: command.command.radiusBottom });
+              return;
+            case "set-action": {
+              if (command.command.slot === null) {
+                patchSelected({ action: command.command.value });
+                return;
+              }
+              const actions = { ...(selected.actions ?? {}) };
+              if (command.command.value) actions[command.command.slot] = command.command.value;
+              else delete actions[command.command.slot];
+              patchSelected({ actions: Object.keys(actions).length ? actions : undefined });
+              return;
+            }
+            case "set-note":
+              patchSelected({ note: command.command.value });
+              return;
+            case "restore-note":
+              patchSelected({ note: command.command.value, noteHistory: command.command.history ? [...command.command.history] : undefined });
+              return;
+            case "delete":
+              deleteSelected();
+              return;
+            case "duplicate":
+              duplicateSelected();
+              return;
+            default:
+              return assertInspectorNever(command.command, "Unhandled item command");
+          }
+        case "frame": {
+          const current = framesRef.current.find((candidate) => candidate.id === command.id);
+          if (!current) return;
+          switch (command.command.kind) {
+            case "set-name":
+              patchFrame(command.id, { name: command.command.value });
+              return;
+            case "set-note":
+              patchFrame(command.id, { note: command.command.value });
+              return;
+            case "restore-note":
+              patchFrame(command.id, { note: command.command.value, noteHistory: command.command.history ? [...command.command.history] : undefined });
+              return;
+            case "set-background":
+              patchFrame(command.id, { bg: command.command.value });
+              return;
+            case "set-place":
+              setPlace(current, command.command.value);
+              return;
+            case "set-preset":
+              setFramePreset(command.id, command.command.value);
+              return;
+            case "set-swipe": {
+              const swipe = { ...(current.swipe ?? {}) };
+              if (command.command.target) swipe[command.command.direction] = command.command.target;
+              else delete swipe[command.command.direction];
+              patchFrame(command.id, { swipe: Object.keys(swipe).length ? swipe : undefined });
+              return;
+            }
+            case "tidy":
+              tidy(current);
+              return;
+            case "delete":
+              deleteFrame(command.id);
+              return;
+            case "duplicate":
+              duplicateFrame(command.id);
+              return;
+            case "preview":
+              openPreview(command.id);
+              return;
+            case "copy-prompt": {
+              try {
+                const copy = navigator.clipboard?.writeText(command.command.prompt);
+                if (copy) void copy.then(() => showToast(t("copied", lang), 1400, "check")).catch(() => {});
+              } catch {}
+              return;
+            }
+            case "export-image":
+              void saveFrameImage(current);
+              return;
+            default:
+              return assertInspectorNever(command.command, "Unhandled frame command");
+          }
+        }
+        default:
+          return assertInspectorNever(command, "Unhandled inspector target");
+      }
+    },
+    [
+      alignSelected,
+      buildPrompt,
+      deleteFrame,
+      deleteSelected,
+      doc,
+      duplicateFrame,
+      duplicateSelected,
+      groupSelected,
+      lang,
+      openPreview,
+      patchFrame,
+      patchSelected,
+      saveFrameImage,
+      selected,
+      setFramePreset,
+      setPlace,
+      showToast,
+      tidy,
+      ungroupSelected,
+    ],
+  );
+
   /** arrows from tappable parts to the frames they open */
   const links = useMemo(() => {
     if (frame !== "phone") return [];
@@ -2944,6 +3224,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
         items: g.items.map((it) => {
           if (it.id !== itemId) return it;
           if (!slot) return { ...it, action: it.action ? fn(it.action) : undefined };
+          if (!isIconSlotKey(slot)) return it;
           const cur = it.actions?.[slot];
           if (!cur) return it;
           const next = fn(cur);
@@ -3211,8 +3492,8 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   };
 
   const handMode = !isMobile && (mode === "hand" || spaceHeld);
-  const panning = gesture?.kind === "pan";
-  const marquee = gesture?.kind === "marquee" && gesture.moved ? gesture : null;
+  const panning = gesture?.kind === GESTURE_KIND.pan;
+  const marquee = gesture?.kind === GESTURE_KIND.marquee && gesture.moved ? gesture : null;
   const canvasBg = frame === "phone" ? p.surfaceContainerLow : "#ffffff";
 
   const panelStyle: React.CSSProperties = {
@@ -3225,8 +3506,8 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
   };
 
   const showRight = rightOpen && !isMobile;
-  const overBin = (!!drag?.active && drag.overBin) || (gesture?.kind === "group" && gesture.overBin);
-  const guide = drag?.active ? drag.guide : gesture?.kind === "group" && gesture.moved ? (gesture.guide ?? null) : null;
+  const overBin = (!!drag?.active && drag.overBin) || (gesture?.kind === GESTURE_KIND.group && gesture.overBin);
+  const guide = drag?.active ? drag.guide : gesture?.kind === GESTURE_KIND.group && gesture.moved ? (gesture.guide ?? null) : null;
   const visibleWorld = (() => {
     const r = canvasRef.current?.getBoundingClientRect();
     return {
@@ -3267,7 +3548,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
           }}
         >
           {allItems
-            .filter((it) => MEASURED.includes(it.kind))
+            .filter((it) => isMeasured(it.kind))
             .map((it) => (
               <div
                 key={it.id}
@@ -3280,9 +3561,9 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
                   boxSizing: "border-box",
                   border:
                     it.variant === "outlined" &&
-                    (it.kind === "button" ||
-                      it.kind === "chip" ||
-                      it.kind === "extendedFab")
+                    (it.kind === COMPONENT_KIND.button ||
+                      it.kind === COMPONENT_KIND.chip ||
+                      it.kind === COMPONENT_KIND.extendedFab)
                       ? "1px solid transparent"
                       : "none",
                 }}
@@ -3608,7 +3889,7 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
                         }}
                       >
                         <div onPointerDown={(e) => e.stopPropagation()}>
-                          <FrameSizePicker frame={f} onChange={(preset) => setFramePreset(f.id, preset)} palette={p} compact />
+                          <FrameSizePicker value={framePresetOf(f)} onChange={(preset) => setFramePreset(f.id, preset)} palette={p} compact />
                         </div>
                         {f.name || t("screen", lang)}
                       </div>
@@ -3931,17 +4212,16 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
           )}
 
           <AnimatePresence>
-            {isMobile && sheet === "edit" && selected && (
+            {isMobile && sheet === "edit" && inspectorSurface.kind === "item" && (
               <BottomSheet key="edit" p={p} onClose={() => setSheet(null)}>
                 <MobileInspector
-                  item={selected}
+                  key={inspectorSurface.model.id}
+                  model={inspectorSurface.model}
                   palette={p}
-                  onChange={patchSelected}
-                  onDelete={() => {
-                    deleteSelected();
-                    setSheet(null);
+                  dispatch={(command) => {
+                    dispatchInspector({ target: "item", id: inspectorSurface.model.id, command });
+                    if (command.kind === "delete") setSheet(null);
                   }}
-                  onDuplicate={duplicateSelected}
                   onClose={() => setSheet(null)}
                 />
               </BottomSheet>
@@ -4048,48 +4328,8 @@ export default function Editor({ initialLang, onReady }: { initialLang: Lang; on
               />
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
-              {rightTab === "edit" && selectedFrame && !selected ? (
-                <FrameInspector
-                  frame={selectedFrame}
-                  palette={p}
-                  onSize={(preset) => setFramePreset(selectedFrame.id, preset)}
-                  onChange={(patch) => patchFrame(selectedFrame.id, patch)}
-                  onDelete={() => deleteFrame(selectedFrame.id)}
-                  onDuplicate={() => duplicateFrame(selectedFrame.id)}
-                  onPreview={() => openPreview(selectedFrame.id)}
-                  prompt={buildPrompt(doc, widths, selectedFrame.id, lang)}
-                  onSaveImage={() => saveFrameImage(selectedFrame)}
-                  frames={frames}
-                  tidy={tidyState ?? "done"}
-                  onTidy={() => tidy(selectedFrame)}
-                  onPlace={(pl) => setPlace(selectedFrame, pl)}
-                  ai={{ ready: aiReady, reason: aiReason, busy: aiBusy && aiFrameId === selectedFrame.id, onRun: () => runAi("describe", selectedFrame), onCancel: cancelAi }}
-                />
-              ) : rightTab === "edit" ? (
-                <Inspector
-                  ai={{
-                    ready: aiReady && !!tidyTarget,
-                    reason: aiReason,
-                    busy: aiBusy,
-                    onRun: () => {
-                      if (tidyTarget && selected) runAi("behavior", tidyTarget, selected.id);
-                    },
-                    onCancel: cancelAi,
-                  }}
-                  item={selectedIds.length > 1 ? null : selected}
-                  railStandalone={groups.some((g) => g.items.length === 1 && g.items[0].id === selected?.id)}
-                  frame={selectedPartFrame}
-                  palette={p}
-                  frames={frame === "phone" ? frames : []}
-                  onChange={patchSelected}
-                  onDelete={deleteSelected}
-                  onDuplicate={duplicateSelected}
-                  onAlign={alignSelected}
-                  multi={selectedIds.length}
-                  grouped={!!selectedGroup}
-                  onGroup={groupSelected}
-                  onUngroup={ungroupSelected}
-                />
+              {rightTab === "edit" ? (
+                <InspectorHost surface={inspectorSurface} palette={p} dispatch={dispatchInspector} />
               ) : (
                 <PromptPanel
                   doc={doc}

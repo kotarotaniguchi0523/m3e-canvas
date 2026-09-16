@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CATEGORIES, KIND_ORDER, KIND_SPEC, Category, Kind, Palette } from "@/lib/tokens";
+import { CATEGORIES, KIND_ORDER, KIND_SPEC, Category, ComponentKind, Palette } from "@/lib/tokens";
 import { Icon } from "./M3Node";
 import { KIND_TEXT, t, useLang } from "@/lib/i18n";
 import { Field, Section, Tile } from "./ui";
@@ -19,13 +19,13 @@ export function PartsPalette({
   onPartPointerDown,
 }: {
   palette: Palette;
-  favorites: Kind[];
-  onToggleFavorite: (k: Kind) => void;
-  onPartPointerDown: (e: React.PointerEvent, kind: Kind) => void;
+  favorites: ComponentKind[];
+  onToggleFavorite: (k: ComponentKind) => void;
+  onPartPointerDown: (e: React.PointerEvent, kind: ComponentKind) => void;
 }) {
   const lang = useLang();
   const [q, setQ] = useState("");
-  const labelOf = (k: Kind) => lang === "en" ? KIND_SPEC[k].label : KIND_TEXT[lang][k]?.noun ?? KIND_SPEC[k].label;
+  const labelOf = (k: ComponentKind) => lang === "en" ? KIND_SPEC[k].label : KIND_TEXT[lang][k]?.noun ?? KIND_SPEC[k].label;
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -36,7 +36,7 @@ export function PartsPalette({
     });
   }, [q, lang]);
 
-  const tile = (k: Kind) => {
+  const tile = (k: ComponentKind) => {
     const s = KIND_SPEC[k];
     return (
       <Tile

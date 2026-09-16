@@ -2,7 +2,7 @@
 
 import { ReactNode, useMemo, useState } from "react";
 import { Reorder, useDragControls } from "motion/react";
-import { Frame, Group, Item, KIND_SPEC, Palette, explodeGroup, isPhoneFrame } from "@/lib/tokens";
+import { COMPONENT_KIND, Frame, Group, Item, KIND_SPEC, Palette, explodeGroup, isPhoneFrame } from "@/lib/tokens";
 import { Icon } from "./M3Node";
 import { Lang, KIND_TEXT, t, useLang } from "@/lib/i18n";
 
@@ -18,7 +18,7 @@ import { Lang, KIND_TEXT, t, useLang } from "@/lib/i18n";
 function nameOf(it: Item, lang: Lang) {
   const spec = KIND_SPEC[it.kind];
   const noun = KIND_TEXT[lang][it.kind]?.noun ?? spec.label;
-  return it.label.trim() || (it.kind === "iconButton" || it.kind === "fab" ? (it.icon ?? noun) : noun);
+  return it.label.trim() || (it.kind === COMPONENT_KIND.iconButton || it.kind === COMPONENT_KIND.fab ? (it.icon ?? noun) : noun);
 }
 
 function runLabel(g: Group, lang: Lang) {

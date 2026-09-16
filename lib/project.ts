@@ -1,12 +1,10 @@
-import { Doc, KIND_ORDER, Kind, VARIANTS, isCardAlign, isCardImagePos, isPlace, isTextToken, isPlatform, isTrackThickness } from "./tokens";
+import { Doc, VARIANTS, isCardAlign, isCardImagePos, isComponentKind, isPlace, isTextToken, isPlatform, isTrackThickness } from "./tokens";
 
 /* A project file is the Doc as JSON, nothing more. Reading one back only checks
  * the shape the editor relies on; the same migrations that run on a saved
  * document then bring an older file up to date. */
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
-
-const KINDS = new Set<string>(KIND_ORDER);
 
 const validTabs = (tabs: unknown) =>
   tabs === undefined || (Array.isArray(tabs) && tabs.every((tab) => isRecord(tab) && typeof tab.label === "string" && (typeof tab.icon === "string" || tab.icon === null || tab.icon === undefined)));
@@ -24,8 +22,7 @@ const validItem = (item: unknown) =>
   (item.contentAlign === undefined || isCardAlign(item.contentAlign)) &&
   (item.textColor === undefined || isTextToken(item.textColor)) &&
   typeof item.id === "string" &&
-  typeof item.kind === "string" &&
-  KINDS.has(item.kind as Kind) &&
+  isComponentKind(item.kind) &&
   typeof item.label === "string" &&
   (typeof item.icon === "string" || item.icon === null) &&
   VARIANTS.some((variant) => variant.key === item.variant) &&
